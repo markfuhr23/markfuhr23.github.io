@@ -26,11 +26,12 @@ author:
   avatar           : "profile.png"
   name             : "Markus Fuhrmann"
   pronouns         : # example: "she/her"  
-  bio              : "Short biography for the left-hand sidebar"
+  bio              : "Short biography for the left-hand sidebar M.Sc. Physics student at TUM and LMU Munich, Germany. Interested in neutral atom computing, quantum optics and the hardware behind it. In love with setting up experiments and new labs."
+                      
   location         : "Earth"
   employer         : "Technical University of Munich & Ludwig Maximilian University Munich"
   uri              : # URL
-  email            : "none@example.org" 
+  email            : "markus.fuhrmann@physik.uni-muenchen.de" 
 
   # Academic websites
   academia         : # URL
@@ -51,7 +52,7 @@ author:
   bitbucket        : # Username - Update with your username on the site
   codepen          : # Username
   dribbble         : # Username
-  github           : "academicpages"
+  github           : "markfuhr23"
   kaggle           : # Username  
   stackoverflow    : # User number or user number and name (i.e., use "1" or "1/jeff-atwood")    
 
@@ -66,7 +67,7 @@ author:
   keybase          : # Username
   instagram        : # Username
   lastfm           : # Username
-  linkedin         : # Username
+  linkedin         : markus-fuhrmann-78a0a7229
   mastodon         : # URL
   medium           : # URL
   pinterest        : # Username
