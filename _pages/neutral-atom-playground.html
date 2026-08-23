@@ -9,17 +9,25 @@ author_profile: false
 
 <div class="playground">
 
-  <!-- Header -->
+  <!-- =====================================================
+       HEADER
+       ====================================================== -->
+
   <div class="playground-header">
     <p class="eyebrow">INTERACTIVE QUANTUM PHYSICS</p>
+
     <h1>Neutral Atom Playground</h1>
+
     <p class="subtitle">
       Explore how individual atoms become a quantum computer.
     </p>
   </div>
 
 
-  <!-- Progress navigation -->
+  <!-- =====================================================
+       PROGRESS NAVIGATION
+       ====================================================== -->
+
   <div class="progress-container">
 
     <div class="progress-bar">
@@ -40,43 +48,42 @@ author_profile: false
 
       <button class="step" data-step="2">
         <span class="step-number">03</span>
-        <span class="step-name">Trapping</span>
+        <span class="step-name">Transport</span>
       </button>
 
       <button class="step" data-step="3">
         <span class="step-number">04</span>
-        <span class="step-name">Rearranging</span>
+        <span class="step-name">Tweezers</span>
       </button>
 
       <button class="step" data-step="4">
         <span class="step-number">05</span>
+        <span class="step-name">Rearranging</span>
+      </button>
+
+      <button class="step" data-step="5">
+        <span class="step-number">06</span>
         <span class="step-name">Quantum Gates</span>
       </button>
 
     </div>
+
   </div>
 
 
-  <!-- Main simulation area -->
+  <!-- =====================================================
+       MAIN SIMULATION AREA
+       ====================================================== -->
+
   <div class="simulation-container">
 
-    <div class="simulation">
+    <!-- Simulation -->
+    <div class="simulation" id="simulation">
 
-      <!-- We will animate atoms here -->
-      <div class="atom atom-1"></div>
-      <div class="atom atom-2"></div>
-      <div class="atom atom-3"></div>
-      <div class="atom atom-4"></div>
-      <div class="atom atom-5"></div>
-      <div class="atom atom-6"></div>
-      <div class="atom atom-7"></div>
+      <!-- JavaScript creates the current simulation here -->
+      <div id="simulation-content"></div>
 
-      <!-- Lasers will be activated in step 2 -->
-      <div class="laser laser-left"></div>
-      <div class="laser laser-right"></div>
-      <div class="laser laser-top"></div>
-      <div class="laser laser-bottom"></div>
-
+      <!-- Simulation label -->
       <div class="simulation-label">
         <span id="simulation-label">HOT ATOM CLOUD</span>
       </div>
@@ -84,27 +91,38 @@ author_profile: false
     </div>
 
 
-    <!-- Explanation panel -->
+    <!-- ===================================================
+         EXPLANATION PANEL
+         ==================================================== -->
+
     <div class="explanation">
 
       <div class="explanation-counter">
-        STEP <span id="current-step">01</span> / 05
+        STEP <span id="current-step">01</span> / 06
       </div>
 
-      <h2 id="step-title">Atoms are everywhere.</h2>
+      <h2 id="step-title">
+        Atoms are everywhere.
+      </h2>
 
       <p id="step-description">
-        Before an atom can become a qubit, we first need to isolate and control it.
-        At room temperature, atoms move extremely fast and randomly.
+        Before an atom can become a qubit, we first need to isolate and
+        control it. At room temperature, atoms move extremely fast and randomly.
       </p>
 
       <div class="controls">
 
-        <button id="previous-button" class="control-button secondary">
+        <button
+          id="previous-button"
+          class="control-button secondary"
+        >
           ← Back
         </button>
 
-        <button id="next-button" class="control-button">
+        <button
+          id="next-button"
+          class="control-button"
+        >
           Start cooling →
         </button>
 
@@ -115,5 +133,6 @@ author_profile: false
   </div>
 
 </div>
+
 
 <script src="{{ '/assets/js/neutral-atom-playground.js' | relative_url }}"></script>
