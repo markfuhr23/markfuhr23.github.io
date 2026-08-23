@@ -4,7 +4,8 @@ const steps = [
         description:
             "Before an atom can become a qubit, we first need to isolate and control it. At room temperature, atoms move extremely fast and randomly.",
         label: "HOT ATOM CLOUD",
-        button: "Start cooling →"
+        button: "Start cooling →",
+        simulation: "hot-atoms"
     },
 
     {
@@ -12,7 +13,18 @@ const steps = [
         description:
             "Laser light can exert a force on atoms. By carefully tuning the lasers, we can repeatedly scatter photons from atoms and reduce their velocity.",
         label: "LASER COOLING",
-        button: "Continue →"
+        button: "Continue →",
+        simulation: "cooling",
+
+    },
+
+    {
+        title: "Then, we transport them somewhere more quiet.",
+        description:
+            "Cooling and hot atoms introduce a lot of noise. We can move the atoms into a vacuum chamber to isolate them from the environment.",
+        label: "CONVEYOR BELT",
+        button: "Continue →",
+        simulation: "transport"
     },
 
     {
@@ -20,7 +32,8 @@ const steps = [
         description:
             "Once sufficiently cold, atoms can be trapped using tightly focused laser beams called optical tweezers.",
         label: "OPTICAL TWEEZERS",
-        button: "Continue →"
+        button: "Continue →",
+        simulation: "trapping"
     },
 
     {
@@ -28,7 +41,8 @@ const steps = [
         description:
             "Atoms can be moved between trapping sites to assemble a defect-free quantum register.",
         label: "ATOM REARRANGEMENT",
-        button: "Continue →"
+        button: "Continue →",
+        simulation: "resorting"
     },
 
     {
@@ -36,7 +50,8 @@ const steps = [
         description:
             "Internal atomic states become qubits. Laser pulses manipulate individual qubits and create entanglement between atoms.",
         label: "QUANTUM COMPUTATION",
-        button: "Restart ↻"
+        button: "Restart ↻",
+        simulation: "quantum-computing"
     }
 ];
 
@@ -100,51 +115,35 @@ function updateStep() {
     /* Reset simulation states */
 
     simulation.classList.remove(
+        "hot-atoms",
         "cooling",
+        "transport",
         "trapping",
-        "rearranging",
-        "quantum"
+        "resorting",
+        "quantum-computing"
     );
-
-
     /* Activate simulation state */
-
-    if (currentStep === 1) {
-
-        simulation.classList.add("cooling");
-
-    }
-
+    simulation.classList.add(step.simulation);
 }
 
 
 nextButton.addEventListener("click", () => {
-
     if (currentStep < steps.length - 1) {
-
         currentStep++;
-
     } else {
-
         currentStep = 0;
-
     }
-
     updateStep();
-
 });
 
 
 previousButton.addEventListener("click", () => {
-
     if (currentStep > 0) {
 
         currentStep--;
 
         updateStep();
-
     }
-
 });
 
 
