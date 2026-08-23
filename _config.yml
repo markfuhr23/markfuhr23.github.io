@@ -28,7 +28,7 @@ author:
   pronouns         : # example: "she/her"  
   bio              : "Short biography for the left-hand sidebar M.Sc. Physics student at TUM and LMU Munich, Germany. Interested in neutral atom computing, quantum optics and the hardware behind it. In love with setting up experiments and new labs."
                       
-  location         : "Earth"
+  location         : # URL
   employer         : "Technical University of Munich & Ludwig Maximilian University Munich"
   uri              : # URL
   email            : "markus.fuhrmann@physik.uni-muenchen.de" 
@@ -36,10 +36,10 @@ author:
   # Academic websites
   academia         : # URL
   arxiv            : # URL - Update with the correct link to your profile
-  googlescholar    : "https://scholar.google.com/citations?user=PS_CX0AAAAAJ"
+  googlescholar    : # URL
   inspire-hep      : # URL
   impactstory      : # URL
-  orcid            : "https://orcid.org/yourorcidurl"
+  orcid            : # URL
   semantic         : # URL
   ssrn             : # URL
   pubmed           : # URL
@@ -58,7 +58,7 @@ author:
 
   # Social media
   artstation       : # Username
-  bluesky          : "bsky.app" # Replace this with you Bluesky username
+  bluesky          : # Username
   facebook         : # Username
   flickr           : # Username
   foursquare       : # Username
