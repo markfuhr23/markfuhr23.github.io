@@ -1,0 +1,119 @@
+---
+layout: single
+title: "Neutral Atom Playground"
+permalink: /neutral-atom-playground/
+author_profile: false
+---
+
+<link rel="stylesheet" href="{{ '/assets/css/neutral-atom-playground.css' | relative_url }}">
+
+<div class="playground">
+
+  <!-- Header -->
+  <div class="playground-header">
+    <p class="eyebrow">INTERACTIVE QUANTUM PHYSICS</p>
+    <h1>Neutral Atom Playground</h1>
+    <p class="subtitle">
+      Explore how individual atoms become a quantum computer.
+    </p>
+  </div>
+
+
+  <!-- Progress navigation -->
+  <div class="progress-container">
+
+    <div class="progress-bar">
+      <div class="progress-fill"></div>
+    </div>
+
+    <div class="steps">
+
+      <button class="step active" data-step="0">
+        <span class="step-number">01</span>
+        <span class="step-name">Atoms</span>
+      </button>
+
+      <button class="step" data-step="1">
+        <span class="step-number">02</span>
+        <span class="step-name">Cooling</span>
+      </button>
+
+      <button class="step" data-step="2">
+        <span class="step-number">03</span>
+        <span class="step-name">Trapping</span>
+      </button>
+
+      <button class="step" data-step="3">
+        <span class="step-number">04</span>
+        <span class="step-name">Rearranging</span>
+      </button>
+
+      <button class="step" data-step="4">
+        <span class="step-number">05</span>
+        <span class="step-name">Quantum Gates</span>
+      </button>
+
+    </div>
+  </div>
+
+
+  <!-- Main simulation area -->
+  <div class="simulation-container">
+
+    <div class="simulation">
+
+      <!-- We will animate atoms here -->
+      <div class="atom atom-1"></div>
+      <div class="atom atom-2"></div>
+      <div class="atom atom-3"></div>
+      <div class="atom atom-4"></div>
+      <div class="atom atom-5"></div>
+      <div class="atom atom-6"></div>
+      <div class="atom atom-7"></div>
+
+      <!-- Lasers will be activated in step 2 -->
+      <div class="laser laser-left"></div>
+      <div class="laser laser-right"></div>
+      <div class="laser laser-top"></div>
+      <div class="laser laser-bottom"></div>
+
+      <div class="simulation-label">
+        <span id="simulation-label">HOT ATOM CLOUD</span>
+      </div>
+
+    </div>
+
+
+    <!-- Explanation panel -->
+    <div class="explanation">
+
+      <div class="explanation-counter">
+        STEP <span id="current-step">01</span> / 05
+      </div>
+
+      <h2 id="step-title">Atoms are everywhere.</h2>
+
+      <p id="step-description">
+        Before an atom can become a qubit, we first need to isolate and control it.
+        At room temperature, atoms move extremely fast and randomly.
+      </p>
+
+      <div class="controls">
+
+        <button id="previous-button" class="control-button secondary">
+          ← Back
+        </button>
+
+        <button id="next-button" class="control-button">
+          Start cooling →
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script src="{{ '/assets/js/neutral-atom-playground.js' | relative_url }}"></script>

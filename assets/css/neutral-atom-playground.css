@@ -1,0 +1,456 @@
+/* =========================================================
+   NEUTRAL ATOM PLAYGROUND
+   ========================================================= */
+
+.playground {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem 5rem;
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.playground-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    opacity: 0.65;
+    margin-bottom: 0.75rem;
+}
+
+.playground-header h1 {
+    font-size: clamp(2.2rem, 5vw, 4.5rem);
+    margin-bottom: 0.75rem;
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    opacity: 0.7;
+}
+
+
+/* =========================================================
+   PROGRESS NAVIGATION
+   ========================================================= */
+
+.progress-container {
+    position: relative;
+    margin-bottom: 3rem;
+}
+
+.progress-bar {
+    position: absolute;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.15);
+    left: 5%;
+    right: 5%;
+    top: 24px;
+}
+
+.progress-fill {
+    width: 0%;
+    height: 100%;
+    background: currentColor;
+    transition: width 0.5s ease;
+}
+
+.steps {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+}
+
+.step {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    text-align: center;
+    padding: 0;
+    opacity: 0.45;
+    transition: opacity 0.3s ease;
+}
+
+.step:hover {
+    opacity: 0.8;
+}
+
+.step.active {
+    opacity: 1;
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 48px;
+    height: 48px;
+
+    border: 1px solid currentColor;
+    border-radius: 50%;
+
+    background: #1a1d22;
+
+    margin: 0 auto 0.5rem;
+}
+
+.step.active .step-number {
+    background: currentColor;
+    color: #1a1d22;
+}
+
+.step-name {
+    font-size: 0.8rem;
+}
+
+
+/* =========================================================
+   MAIN SIMULATION
+   ========================================================= */
+
+.simulation-container {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+
+    background: #15181d;
+    border-radius: 20px;
+    overflow: hidden;
+
+    min-height: 500px;
+}
+
+.simulation {
+    position: relative;
+
+    min-height: 500px;
+
+    overflow: hidden;
+
+    background:
+        radial-gradient(
+            circle at center,
+            #202832 0%,
+            #101216 70%
+        );
+}
+
+
+/* =========================================================
+   ATOMS
+   ========================================================= */
+
+.atom {
+    position: absolute;
+
+    width: 18px;
+    height: 18px;
+
+    border-radius: 50%;
+
+    background: #e6edf3;
+
+    box-shadow:
+        0 0 10px rgba(230, 237, 243, 0.9),
+        0 0 25px rgba(230, 237, 243, 0.3);
+
+    animation-duration: 1.2s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+.atom-1 {
+    top: 20%;
+    left: 15%;
+    animation-name: move-1;
+}
+
+.atom-2 {
+    top: 70%;
+    left: 25%;
+    animation-name: move-2;
+}
+
+.atom-3 {
+    top: 40%;
+    left: 60%;
+    animation-name: move-3;
+}
+
+.atom-4 {
+    top: 20%;
+    left: 80%;
+    animation-name: move-4;
+}
+
+.atom-5 {
+    top: 75%;
+    left: 75%;
+    animation-name: move-5;
+}
+
+.atom-6 {
+    top: 55%;
+    left: 45%;
+    animation-name: move-6;
+}
+
+.atom-7 {
+    top: 30%;
+    left: 35%;
+    animation-name: move-7;
+}
+
+
+/* Random hot atom motion */
+
+@keyframes move-1 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(90px, 40px); }
+    50%  { transform: translate(40px, 160px); }
+    75%  { transform: translate(-60px, 100px); }
+    100% { transform: translate(100px, -40px); }
+}
+
+@keyframes move-2 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(-100px, -80px); }
+    50%  { transform: translate(80px, -150px); }
+    75%  { transform: translate(120px, 20px); }
+    100% { transform: translate(-50px, -120px); }
+}
+
+@keyframes move-3 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(100px, -80px); }
+    50%  { transform: translate(-80px, -120px); }
+    75%  { transform: translate(-120px, 70px); }
+    100% { transform: translate(40px, 130px); }
+}
+
+@keyframes move-4 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(-120px, 100px); }
+    50%  { transform: translate(-80px, -140px); }
+    75%  { transform: translate(50px, 80px); }
+    100% { transform: translate(-100px, 20px); }
+}
+
+@keyframes move-5 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(-100px, -100px); }
+    50%  { transform: translate(40px, -180px); }
+    75%  { transform: translate(-80px, 30px); }
+    100% { transform: translate(80px, -70px); }
+}
+
+@keyframes move-6 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(100px, 80px); }
+    50%  { transform: translate(-70px, 120px); }
+    75%  { transform: translate(120px, -90px); }
+    100% { transform: translate(-50px, -100px); }
+}
+
+@keyframes move-7 {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(-80px, 120px); }
+    50%  { transform: translate(120px, 80px); }
+    75%  { transform: translate(50px, -100px); }
+    100% { transform: translate(-100px, -50px); }
+}
+
+
+/* =========================================================
+   LASERS
+   ========================================================= */
+
+.laser {
+    position: absolute;
+
+    opacity: 0;
+
+    transition: opacity 0.8s ease;
+
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 80, 80, 0.9),
+        transparent
+    );
+
+    box-shadow: 0 0 15px rgba(255, 80, 80, 0.6);
+}
+
+.laser-left,
+.laser-right {
+    width: 100%;
+    height: 5px;
+}
+
+.laser-left {
+    top: 35%;
+    left: -50%;
+}
+
+.laser-right {
+    top: 65%;
+    right: -50%;
+}
+
+.laser-top,
+.laser-bottom {
+    width: 5px;
+    height: 100%;
+
+    background: linear-gradient(
+        0deg,
+        transparent,
+        rgba(255, 80, 80, 0.9),
+        transparent
+    );
+}
+
+.laser-top {
+    left: 35%;
+    top: -50%;
+}
+
+.laser-bottom {
+    right: 35%;
+    bottom: -50%;
+}
+
+
+/* Lasers become visible during cooling */
+
+.simulation.cooling .laser {
+    opacity: 1;
+}
+
+
+/* Atoms slow down */
+
+.simulation.cooling .atom {
+    animation-duration: 5s;
+}
+
+
+/* =========================================================
+   SIMULATION LABEL
+   ========================================================= */
+
+.simulation-label {
+    position: absolute;
+
+    top: 1.5rem;
+    left: 1.5rem;
+
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+
+    opacity: 0.6;
+}
+
+
+/* =========================================================
+   EXPLANATION
+   ========================================================= */
+
+.explanation {
+    padding: 3rem;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.explanation-counter {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    opacity: 0.5;
+    margin-bottom: 1rem;
+}
+
+.explanation h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.explanation p {
+    line-height: 1.7;
+    opacity: 0.75;
+}
+
+
+/* =========================================================
+   CONTROLS
+   ========================================================= */
+
+.controls {
+    display: flex;
+    gap: 0.75rem;
+
+    margin-top: 2rem;
+}
+
+.control-button {
+    padding: 0.8rem 1.2rem;
+
+    border: 1px solid currentColor;
+    border-radius: 8px;
+
+    background: currentColor;
+    color: #15181d;
+
+    cursor: pointer;
+
+    font-weight: 600;
+
+    transition:
+        transform 0.2s ease,
+        opacity 0.2s ease;
+}
+
+.control-button:hover {
+    transform: translateY(-2px);
+}
+
+.control-button.secondary {
+    background: transparent;
+    color: inherit;
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 800px) {
+
+    .simulation-container {
+        grid-template-columns: 1fr;
+    }
+
+    .simulation {
+        min-height: 350px;
+    }
+
+    .steps {
+        overflow-x: auto;
+        gap: 1rem;
+    }
+
+    .step {
+        min-width: 70px;
+    }
+
+}
