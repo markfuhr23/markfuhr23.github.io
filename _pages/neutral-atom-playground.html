@@ -7,132 +7,39 @@ author_profile: false
 
 <link rel="stylesheet" href="{{ '/assets/css/neutral-atom-playground.css' | relative_url }}">
 
-<div class="playground">
+<div class="nap" id="nap">
 
-  <!-- =====================================================
-       HEADER
-       ====================================================== -->
+  <header class="nap-header">
+    <p class="nap-eyebrow">DUAL-SPECIES &middot; CONTINUOUSLY RELOADED &middot; CAVITY READOUT</p>
+    <p class="nap-subtitle">How ytterbium and rubidium atoms become a quantum computer that never has to stop.</p>
+  </header>
 
-  <div class="playground-header">
-    <p class="eyebrow">INTERACTIVE QUANTUM PHYSICSffffffff</p>
+  <nav class="nap-steps" id="nap-steps" aria-label="Animation steps"></nav>
 
-    <h1>Neutral Atom Playground</h1>
+  <div class="nap-stage">
 
-    <p class="subtitle">
-      Explore how individual atoms become a quantum computer.
-    </p>
-  </div>
-
-
-  <!-- =====================================================
-       PROGRESS NAVIGATION
-       ====================================================== -->
-
-  <div class="progress-container">
-
-    <div class="progress-bar">
-      <div class="progress-fill"></div>
+    <div class="nap-sim">
+      <canvas id="nap-canvas" aria-label="Animation of a neutral atom quantum computer"></canvas>
+      <div class="nap-sim-label" id="nap-sim-label"></div>
+      <button class="nap-pause" id="nap-pause" type="button" aria-label="Pause animation">&#10074;&#10074;</button>
     </div>
 
-    <div class="steps">
-
-      <button class="step active" data-step="0">
-        <span class="step-number">01</span>
-        <span class="step-name">Atoms</span>
-      </button>
-
-      <button class="step" data-step="1">
-        <span class="step-number">02</span>
-        <span class="step-name">Cooling</span>
-      </button>
-
-      <button class="step" data-step="2">
-        <span class="step-number">03</span>
-        <span class="step-name">Transport</span>
-      </button>
-
-      <button class="step" data-step="3">
-        <span class="step-number">04</span>
-        <span class="step-name">Tweezers</span>
-      </button>
-
-      <button class="step" data-step="4">
-        <span class="step-number">05</span>
-        <span class="step-name">Rearranging</span>
-      </button>
-
-      <button class="step" data-step="5">
-        <span class="step-number">06</span>
-        <span class="step-name">Quantum Gates</span>
-      </button>
-
+    <div class="nap-panel">
+      <div class="nap-counter">STEP <span id="nap-current">01</span> / <span id="nap-total">08</span></div>
+      <h2 class="nap-title" id="nap-title"></h2>
+      <div class="nap-text" id="nap-text"></div>
+      <ul class="nap-chips" id="nap-chips"></ul>
+      <div class="nap-control" id="nap-control"></div>
+      <div class="nap-buttons">
+        <button class="nap-btn nap-btn-secondary" id="nap-prev" type="button">&larr; Back</button>
+        <button class="nap-btn" id="nap-next" type="button">Next &rarr;</button>
+      </div>
     </div>
 
   </div>
 
-
-  <!-- =====================================================
-       MAIN SIMULATION AREA
-       ====================================================== -->
-
-  <div class="simulation-container">
-
-    <!-- Simulation -->
-    <div class="simulation" id="simulation">
-
-      <!-- JavaScript creates the current simulation here -->
-      <div id="simulation-content"></div>
-
-      <!-- Simulation label -->
-      <div class="simulation-label">
-        <span id="simulation-label">HOT ATOM CLOUD</span>
-      </div>
-
-    </div>
-
-
-    <!-- ===================================================
-         EXPLANATION PANEL
-         ==================================================== -->
-
-    <div class="explanation">
-
-      <div class="explanation-counter">
-        STEP <span id="current-step">01</span> / 06
-      </div>
-
-      <h2 id="step-title">
-        Atoms are everywhere.
-      </h2>
-
-      <p id="step-description">
-        Before an atom can become a qubit, we first need to isolate and
-        control it. At room temperature, atoms move extremely fast and randomly.
-      </p>
-
-      <div class="controls">
-
-        <button
-          id="previous-button"
-          class="control-button secondary"
-        >
-          ← Back
-        </button>
-
-        <button
-          id="next-button"
-          class="control-button"
-        >
-          Start cooling →
-        </button>
-
-      </div>
-
-    </div>
-
-  </div>
+  <p class="nap-footnote">Schematic, not to scale. Atom and lattice sizes are exaggerated by about five orders of magnitude.</p>
 
 </div>
-
 
 <script src="{{ '/assets/js/neutral-atom-playground.js' | relative_url }}"></script>

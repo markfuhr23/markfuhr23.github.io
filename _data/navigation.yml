@@ -32,5 +32,5 @@ main:
   - title: "Guide"
     url: /markdown/
   
-  -title: "Neutral Atom Playground"
-   url: /neutral-atom-playground/
+  - title: "Neutral Atom Playground"
+    url: /neutral-atom-playground/
