@@ -275,44 +275,52 @@
 
 
     /* =========================================================
-       MACHINE VIEW
-       Vertical positions follow the real experiment geometry
-       (octagon / 3D MOT at z = 0.75 m, Rb MOT at z = 0.20 m,
-       differential pumping tubes in between).
+       MACHINE VIEW  (illustrative, not the real geometry)
+       ovens in the middle -> atoms fall into the glass cell
+       -> one 3D MOT per species -> conveyor up to the octagon
        ========================================================= */
 
     const M = {
         ax: 520,
         oct: { x: 520, y: 130, r: 62 },
-        mot2d: { x: 520, y: 357 },
-        chamber: { x: 478, y: 322, w: 84, h: 70 },
-        oven: { x: 360, y: 326, w: 60, h: 32 },
-        dp2: [278, 319],
-        dp1: [393, 474],
-        cell: { x: 462, y: 474, w: 116, h: 84 },
-        rbMOT: { x: 532, y: 522 },
-        ybCell: { x: 510, y: 506 },
-        cellC: { x: 520, y: 515 }
+        cross: { x: 496, y: 306, w: 48, h: 48 },
+        oven: {
+            yb: { x: 380, y: 314, w: 60, h: 32, nozzle: 442, dir: 1 },
+            rb: { x: 600, y: 314, w: 60, h: 32, nozzle: 598, dir: -1 }
+        },
+        cell: { x: 490, y: 448, w: 60, h: 150 },
+        mot: { yb: { x: 520, y: 500 }, rb: { x: 520, y: 552 } },
+        sci: { yb: { x: 512, y: 126 }, rb: { x: 528, y: 136 } },
+        zoom: { x: 520, y: 130 }
     };
 
     const MS = {
-        yb: [], rb: [],
+        p: [],
         cooling: false, beamA: 0,
         lattice: false, latA: 0,
         phase: 0, dnu: 1.0,
-        spawn: 0, packet: 0,
+        spawn: 0, packet: 0, nextSp: "yb",
         panel: "legend"
     };
 
+    function cellBounce(p) {
+        const c = M.cell;
+        if (p.x < c.x + 4 || p.x > c.x + c.w - 4) { p.vx *= -1; p.x = clamp(p.x, c.x + 4, c.x + c.w - 4); }
+        if (p.y < c.y + 4 || p.y > c.y + c.h - 4) { p.vy *= -1; p.y = clamp(p.y, c.y + 4, c.y + c.h - 4); }
+    }
+
     function machineReset() {
-        MS.yb = [];
-        MS.rb = [];
-        for (let i = 0; i < 34; i++) {
-            const ang = rand(0, TAU), v = rand(150, 260);
-            MS.rb.push({
-                x: rand(470, 570), y: rand(482, 550),
-                vx: v * Math.cos(ang), vy: v * Math.sin(ang), a: 1
-            });
+        MS.p = [];
+        const c = M.cell;
+        for (const sp of ["yb", "rb"]) {
+            for (let i = 0; i < 18; i++) {
+                const ang = rand(0, TAU), v = rand(150, 260);
+                MS.p.push({
+                    sp, m: "cell", a: 1, age: rand(0, 2), seed: rand(0, TAU),
+                    x: rand(c.x + 6, c.x + c.w - 6), y: rand(c.y + 6, c.y + c.h - 6),
+                    vx: v * Math.cos(ang), vy: v * Math.sin(ang)
+                });
+            }
         }
         MS.phase = 0;
     }
@@ -327,10 +335,20 @@
         p.y += p.vy * dt;
     }
 
-    function countMode(m) {
+    function countMode(m, sp) {
         let n = 0;
-        for (const p of MS.yb) if (p.m === m) n++;
+        for (const p of MS.p) if (p.m === m && (!sp || p.sp === sp)) n++;
         return n;
+    }
+
+    function retireOldest(m, sp, keep) {
+        let n = countMode(m, sp);
+        while (n > keep) {
+            let oldest = null;
+            for (const p of MS.p) if (p.m === m && p.sp === sp && (!oldest || p.age > oldest.age)) oldest = p;
+            oldest.m = "fade";
+            n--;
+        }
     }
 
     function updateMachine(dt) {
@@ -340,109 +358,103 @@
         const v = latticeSpeed();
         if (MS.lattice) MS.phase += v * dt;
 
-        /* Yb atoms leaving the oven */
+        /* atoms leaving both ovens */
         MS.spawn -= dt;
         if (MS.spawn <= 0) {
-            MS.spawn = 0.05;
-            if (countMode("beam") + countMode("2d") < 26) {
-                MS.yb.push({
-                    x: 422, y: M.mot2d.y + randn() * 2.5,
-                    vx: rand(200, 320), vy: randn() * 18,
-                    m: "beam", a: 0, age: 0, seed: rand(0, TAU)
-                });
-            }
-        }
-
-        /* load packets from the 3D MOT into the moving lattice */
-        if (MS.lattice && v > 2) {
-            MS.packet -= dt;
-            if (MS.packet <= 0 && countMode("mot") > 15) {
-                MS.packet = 0.7;
-                const sp = 7, off = ((MS.phase % sp) + sp) % sp;
-                const mot = MS.yb.filter(p => p.m === "mot").sort(() => Math.random() - 0.5).slice(0, 7);
-                for (const p of mot) {
-                    p.m = "lat";
-                    p.x0 = M.ax + rand(-2.5, 2.5);
-                    p.y = off + Math.round((p.y - off) / sp) * sp;
+            MS.spawn = 0.08;
+            for (const sp of ["yb", "rb"]) {
+                const busy = countMode("beam", sp) + countMode("fall", sp) + countMode("cell", sp);
+                if (busy < 26) {
+                    const o = M.oven[sp];
+                    MS.p.push({
+                        sp, m: "beam", a: 0, age: 0, seed: rand(0, TAU),
+                        x: o.nozzle, y: 330 + randn() * 2,
+                        vx: o.dir * rand(150, 240), vy: randn() * 10
+                    });
                 }
             }
         }
 
-        let motN = countMode("mot");
-        let cellN = countMode("cell");
+        /* load packets from the MOTs into the moving lattice, alternating species */
+        if (MS.lattice && v > 2) {
+            MS.packet -= dt;
+            const sp = MS.nextSp;
+            if (MS.packet <= 0 && countMode("mot", sp) > 12) {
+                MS.packet = 0.5;
+                MS.nextSp = sp === "yb" ? "rb" : "yb";
+                const s = 7, off = (((-MS.phase) % s) + s) % s;
+                const pick = MS.p.filter(p => p.m === "mot" && p.sp === sp).sort(() => Math.random() - 0.5).slice(0, 6);
+                for (const p of pick) {
+                    p.m = "lat";
+                    p.x0 = M.ax + rand(-2.5, 2.5);
+                    p.y = off + Math.round((p.y - off) / s) * s;
+                }
+            }
+        }
 
-        for (const p of MS.yb) {
+        for (const p of MS.p) {
             p.age += dt;
             if (p.m !== "fade") p.a = Math.min(1, p.a + dt * 4);
+            const mot = M.mot[p.sp], sci = M.sci[p.sp];
 
             switch (p.m) {
-                case "beam":
+                case "beam":            /* out of the oven, into the vertical tube */
                     p.x += p.vx * dt;
                     p.y += p.vy * dt;
-                    if (MS.cooling && p.x > 482) p.m = "2d";
-                    else if (p.x > 556) p.m = "fade";
+                    if (Math.abs(p.x - M.ax) < 6) {
+                        p.m = "fall";
+                        p.vx = randn() * 8;
+                        p.vy = rand(170, 250);
+                    }
                     break;
 
-                case "2d":   // transverse cooling + push beam upwards
-                    p.vx += (-10 * p.vx - 120 * (p.x - M.ax)) * dt;
-                    p.vy += -6 * (p.vy + 180) * dt;
+                case "fall":            /* falling down into the glass cell */
                     p.x += p.vx * dt;
                     p.y += p.vy * dt;
-                    if (p.y < M.oct.y + 55) {
-                        if (motN < 85) { p.m = "mot"; motN++; }
-                        else p.m = "fade";
-                    }
+                    if (Math.abs(p.x - M.ax) > 7) p.vx *= -1;
+                    if (p.y > M.cell.y + 6) { p.m = "cell"; p.vx = randn() * 120; }
+                    break;
+
+                case "cell":            /* hot vapour in the glass cell */
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    cellBounce(p);
+                    if (MS.cooling) p.m = "mot";
+                    else if (p.age > 4) p.m = "fade";
                     break;
 
                 case "mot":
-                    motStep(p, M.oct.x, M.oct.y, dt, 5, 14, 7000);
+                    motStep(p, mot.x, mot.y, dt, 5, 14, 3400);
                     break;
 
-                case "lat":
-                    p.y += v * dt;
+                case "lat":             /* riding the conveyor up to the octagon */
+                    p.y -= v * dt;
                     p.x = p.x0 + Math.sin(p.age * 9 + p.seed) * 0.8;
-                    if (p.y >= M.ybCell.y - 2) {
-                        p.m = "cell";
+                    if (p.y <= sci.y + 2) {
+                        p.m = "sci";
                         p.vx = randn() * 10;
-                        p.vy = v * 0.5;
-                        cellN++;
+                        p.vy = -v * 0.4;
                     }
                     break;
 
-                case "cell":
-                    motStep(p, M.ybCell.x, M.ybCell.y, dt, 5, 14, 3400);
+                case "sci":
+                    motStep(p, sci.x, sci.y, dt, 5, 14, 3000);
                     break;
 
                 case "fade":
                     p.a -= dt * 1.5;
-                    p.x += (p.vx || 0) * dt;
-                    p.y += (p.vy || 0) * dt;
+                    p.x += (p.vx || 0) * dt * 0.3;
+                    p.y += (p.vy || 0) * dt * 0.3;
                     break;
             }
         }
 
-        /* keep the science-cell Yb cloud at a sensible size */
-        while (cellN > 45) {
-            let oldest = null;
-            for (const p of MS.yb) if (p.m === "cell" && (!oldest || p.age > oldest.age)) oldest = p;
-            oldest.m = "fade";
-            oldest.vx = oldest.vy = 0;
-            cellN--;
+        for (const sp of ["yb", "rb"]) {
+            retireOldest("mot", sp, 40);
+            retireOldest("sci", sp, 28);
         }
 
-        MS.yb = MS.yb.filter(p => p.a > 0);
-
-        /* Rb in the glass cell: vapour or MOT */
-        for (const p of MS.rb) {
-            if (MS.cooling) {
-                motStep(p, M.rbMOT.x, M.rbMOT.y, dt, 3, 8, 1900);
-            } else {
-                p.x += p.vx * dt;
-                p.y += p.vy * dt;
-                if (p.x < 468 || p.x > 572) { p.vx *= -1; p.x = clamp(p.x, 468, 572); }
-                if (p.y < 480 || p.y > 551) { p.vy *= -1; p.y = clamp(p.y, 480, 551); }
-            }
-        }
+        MS.p = MS.p.filter(p => p.a > 0);
     }
 
     function warmMachine(seconds) {
@@ -473,104 +485,84 @@
         ring(cx, cy, 40);
     }
 
-    function drawHardware() {
-        ctx.lineWidth = 1;
-
-        /* oven -> 2D MOT pipe */
-        ctx.fillStyle = C.steel;
-        ctx.strokeStyle = C.steelEdge;
-        rr(418, 336, 62, 12, 2);
-        ctx.fill(); ctx.stroke();
-
-        /* main vertical tube */
-        rr(506, 186, 28, 290, 2);
-        ctx.fill(); ctx.stroke();
-        ctx.fillStyle = C.bore;
-        ctx.fillRect(511, 186, 18, 290);
-
-        /* differential pumping tubes (narrow bore) */
-        for (const [a, b] of [M.dp2, M.dp1]) {
-            ctx.fillStyle = C.steel;
-            ctx.strokeStyle = C.steelEdge;
-            rr(497, a, 46, b - a, 2);
-            ctx.fill(); ctx.stroke();
-            ctx.fillStyle = C.bore;
-            ctx.fillRect(516, a, 8, b - a);
-        }
-
-        /* Yb oven */
-        const o = M.oven;
+    function drawOven(o) {
         ctx.fillStyle = "#2f2a26";
         ctx.strokeStyle = "#6b5a4a";
         rr(o.x, o.y, o.w, o.h, 6);
         ctx.fill(); ctx.stroke();
         ctx.globalCompositeOperation = "lighter";
-        glow(o.x + o.w / 2 + 8, o.y + o.h / 2, 30, "#ff8a3d", 0.32 + 0.05 * Math.sin(simTime * 3));
+        glow(o.x + o.w / 2 - o.dir * 6, o.y + o.h / 2, 30, "#ff8a3d", 0.32 + 0.05 * Math.sin(simTime * 3 + o.dir));
         ctx.globalCompositeOperation = "source-over";
+    }
 
-        /* 2D MOT chamber */
-        const ch = M.chamber;
-        glassBox(ch.x, ch.y, ch.w, ch.h, 6);
+    function drawHardware() {
+        ctx.lineWidth = 1;
+        ctx.fillStyle = C.steel;
+        ctx.strokeStyle = C.steelEdge;
 
-        /* octagon */
+        /* oven arms */
+        rr(438, 324, 60, 12, 2); ctx.fill(); ctx.stroke();
+        rr(542, 324, 60, 12, 2); ctx.fill(); ctx.stroke();
+
+        /* vertical tube, glass cell -> octagon */
+        rr(506, 186, 28, 266, 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = C.bore;
+        ctx.fillRect(511, 186, 18, 266);
+
+        /* oven cross */
+        const x = M.cross;
+        ctx.fillStyle = C.steel;
+        rr(x.x, x.y, x.w, x.h, 4); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = C.bore;
+        ctx.fillRect(511, x.y, 18, x.h);
+        ctx.fillRect(x.x, 324, x.w, 12);
+
+        drawOven(M.oven.yb);
+        drawOven(M.oven.rb);
+
         drawOctagon(M.oct.x, M.oct.y, M.oct.r);
 
-        /* glass cell */
-        const c = M.cell;
-        glassBox(c.x, c.y, c.w, c.h, 8);
-
-        /* tiny in-vacuum cavity mirrors */
+        /* tiny cavity mirrors inside the octagon */
         ctx.strokeStyle = hexA(C.cavity, 0.55);
         ctx.lineWidth = 2;
-        for (const [x, d] of [[471, 1], [569, -1]]) {
+        for (const [mx, d] of [[490, 1], [550, -1]]) {
             ctx.beginPath();
-            ctx.moveTo(x, 490);
-            ctx.quadraticCurveTo(x - d * 5, 497, x, 504);
+            ctx.moveTo(mx, 143);
+            ctx.quadraticCurveTo(mx - d * 4, 150, mx, 157);
             ctx.stroke();
         }
         ctx.lineWidth = 1;
 
-        /* Rb dispenser */
-        ctx.fillStyle = "#3a3330";
-        ctx.fillRect(566, 534, 5, 18);
-        if (!MS.cooling) {
-            ctx.globalCompositeOperation = "lighter";
-            glow(568, 540, 12, "#ff8a3d", 0.35);
-            ctx.globalCompositeOperation = "source-over";
-        }
+        const c = M.cell;
+        glassBox(c.x, c.y, c.w, c.h, 3);
+    }
+
+    function drawMotBeams(m, color, a) {
+        beam(474, m.y, 566, m.y, color, 7, a);
+        beam(m.x - 24, m.y - 24, m.x + 24, m.y + 24, color, 6, a * 0.85);
+        beam(m.x - 24, m.y + 24, m.x + 24, m.y - 24, color, 6, a * 0.85);
     }
 
     function drawMachineBeams() {
         const a = MS.beamA;
         if (a < 0.01) return;
-        const m2 = M.mot2d, o = M.oct, r = M.rbMOT;
-
-        beam(474, m2.y, 566, m2.y, C.l399, 7, a);
-        beam(m2.x - 30, m2.y - 30, m2.x + 30, m2.y + 30, C.l399, 6, a * 0.8);
-        beam(m2.x - 30, m2.y + 30, m2.x + 30, m2.y - 30, C.l399, 6, a * 0.8);
-        beam(m2.x, m2.y + 30, m2.x, o.y + 10, C.l399, 3, a * 0.3);     // push beam
-
-        beam(o.x - 74, o.y, o.x + 74, o.y, C.l556, 8, a);
-        beam(o.x - 46, o.y - 46, o.x + 46, o.y + 46, C.l556, 7, a * 0.85);
-        beam(o.x - 46, o.y + 46, o.x + 46, o.y - 46, C.l556, 7, a * 0.85);
-
-        beam(466, r.y, 574, r.y, C.l780, 7, a);
-        beam(r.x - 30, r.y - 30, r.x + 30, r.y + 30, C.l780, 6, a * 0.85);
-        beam(r.x - 30, r.y + 30, r.x + 30, r.y - 30, C.l780, 6, a * 0.85);
+        drawMotBeams(M.mot.yb, C.l556, a);
+        drawMotBeams(M.mot.rb, C.l780, a);
     }
 
     function drawMachineLattice() {
         const a = MS.latA;
         if (a < 0.01) return;
-        const x = M.ax, top = 72, bot = 540, sp = 7;
+        const x = M.ax, top = 72, bot = 580, s = 7;
         beam(x, top, x, bot, C.lattice, 10, a * 0.45);
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
         ctx.strokeStyle = hexA(C.lattice, 0.5 * a);
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        const off = ((MS.phase % sp) + sp) % sp;
-        for (let y = top + off; y < bot; y += sp) {
+        const off = (((-MS.phase) % s) + s) % s;
+        for (let y = off; y < bot; y += s) {
+            if (y < top) continue;
             ctx.moveTo(x - 5, y);
             ctx.lineTo(x + 5, y);
         }
@@ -579,32 +571,21 @@
     }
 
     function drawMachineLabels() {
-        text("2D MOT", 470, 372, { align: "right", color: C.text });
         text("octagon", 596, 116, { color: C.text });
-        text("glass cell", 590, 492, { color: C.text });
+        text("glass cell", 562, 466, { color: C.text });
+        text("Yb oven", 410, 300, { align: "center" });
+        text("Rb oven", 630, 300, { align: "center" });
         if (!compact) {
-            text("Yb oven", 390, 312, { align: "center" });
-            text("399 nm", 470, 388, { align: "right" });
-            text("3D MOT · 556 nm", 596, 132);
-            text("differential pumping", 552, 298);
-            text("differential pumping", 552, 433);
-            text("Rb MOT · 780 nm", 590, 508);
-            text("tweezers · cavity", 590, 524);
+            text("science chamber", 596, 132);
+            text("Yb MOT · 556 nm", 572, 500);
+            text("Rb MOT · 780 nm", 572, 552);
         }
 
         if (MS.panel === "lattice") {
-            const x = 334, y1 = 130, y2 = M.ybCell.y;
-            ctx.strokeStyle = hexA(C.text, 0.4);
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(x, y1); ctx.lineTo(x, y2);
-            ctx.moveTo(x - 5, y1); ctx.lineTo(x + 5, y1);
-            ctx.moveTo(x - 5, y2); ctx.lineTo(x + 5, y2);
-            ctx.stroke();
             ctx.save();
-            ctx.translate(x - 12, (y1 + y2) / 2 - 70);
+            ctx.translate(486, 250);
             ctx.rotate(-Math.PI / 2);
-            text("≈ 55 cm conveyor", 0, 0, { align: "center", color: C.text });
+            text("optical conveyor  →", 0, 0, { align: "center", color: C.lattice });
             ctx.restore();
         }
     }
@@ -628,32 +609,31 @@
             text("⁸⁷Rb · rubidium", 752, 283, { color: C.text });
             text("ancillas · cavity readout", 752, 300, { size: 10 });
             text("LIGHT", x + 16, 336, { size: 10 });
-            [[746, C.l399, "399 nm Yb"], [836, C.l556, "556 nm Yb"], [926, C.l780, "780 nm Rb"]].forEach(([cx, col, name]) => {
+            [[786, C.l556, "556 nm Yb"], [896, C.l780, "780 nm Rb"]].forEach(([cx, col, name]) => {
                 text(name, cx, 362, { size: 10, align: "center", color: C.text });
-                beam(cx - 30, 384, cx + 30, 384, col, 6, 1);
+                beam(cx - 36, 384, cx + 36, 384, col, 6, 1);
             });
             text("far apart → no crosstalk", x + 16, 412, { size: 10 });
         }
 
         if (MS.panel === "cool") {
             panel(x, y, w, h, "LASER COOLING");
-            legendRow(244, C.l399, "399 nm · Yb 2D MOT", "broad line, catches fast atoms");
-            legendRow(288, C.l556, "556 nm · Yb 3D MOT", "narrow line, very cold");
-            legendRow(332, C.l780, "780 nm · Rb MOT", "D2 line, in the glass cell");
+            legendRow(250, C.l556, "556 nm · Yb MOT", "narrow intercombination line");
+            legendRow(296, C.l780, "780 nm · Rb MOT", "D2 line");
 
-            let s = 0;
-            for (const p of MS.rb) s += Math.hypot(p.vx, p.vy);
-            const f = clamp(s / Math.max(1, MS.rb.length) / 220, 0, 1);
-            text("Rb speed", x + 16, 374, { size: 10 });
+            let s = 0, n = 0;
+            for (const p of MS.p) if (p.m === "cell" || p.m === "mot") { s += Math.hypot(p.vx, p.vy); n++; }
+            const f = clamp(s / Math.max(1, n) / 200, 0, 1);
+            text("atom speed", x + 16, 352, { size: 10 });
             ctx.fillStyle = "rgba(201, 212, 227, 0.10)";
-            rr(x + 84, 368, 180, 10, 5);
+            rr(x + 94, 346, 170, 10, 5);
             ctx.fill();
             ctx.fillStyle = mixHex(C.rydberg, C.rb, f);
-            rr(x + 84, 368, Math.max(6, 180 * f), 10, 5);
+            rr(x + 94, 346, Math.max(6, 170 * f), 10, 5);
             ctx.fill();
-            text("hot", x + 264, 391, { size: 9, align: "right" });
-            text("cold", x + 84, 391, { size: 9 });
-            text(`Yb atoms in 3D MOT: ${countMode("mot")}`, x + 16, 414, { size: 10, color: C.text });
+            text("cold", x + 94, 369, { size: 9 });
+            text("hot", x + 264, 369, { size: 9, align: "right" });
+            text(`atoms in the MOTs: ${countMode("mot")}`, x + 16, 404, { size: 10, color: C.text });
         }
 
         if (MS.panel === "lattice") {
@@ -679,13 +659,14 @@
             }
             ctx.stroke();
 
-            /* atoms sitting in every other well */
+            /* atoms of both species sitting in the wells */
             const first = x0 + (((ph % per) + per) % per);
             for (let k = -2; k < 9; k++) {
                 const xx = first + k * per;
                 if (xx < x0 + 4 || xx > x1 - 4) continue;
                 const idx = Math.round((xx - x0 - ph) / per);
-                if (((idx % 2) + 2) % 2 === 0) drawAtom(xx, base + depth - 6, "yb", 1, 0.9);
+                const m = ((idx % 3) + 3) % 3;
+                if (m < 2) drawAtom(xx, base + depth - 6, m ? "rb" : "yb", 1, 0.9);
             }
 
             /* lambda/2 bracket */
@@ -712,8 +693,7 @@
         drawMachineBeams();
         drawMachineLattice();
 
-        for (const p of MS.rb) drawAtom(p.x, p.y, "rb", p.a, 0.75);
-        for (const p of MS.yb) drawAtom(p.x, p.y, "yb", p.a, 0.75);
+        for (const p of MS.p) drawAtom(p.x, p.y, p.sp, p.a, 0.75);
 
         drawMachineLabels();
         drawMachinePanel();
@@ -733,15 +713,15 @@
         resY: 108,
         res: { yb: { x: 300, rx: 140, ry: 22 }, rb: { x: 700, rx: 140, ry: 22 } },
         resMax: 48,
-        convX: 300
+        convX: 500
     };
 
     const AS = {
         atoms: [], grid: [], tweens: [], fx: [],
         res: { yb: AG.resMax, rb: AG.resMax },
         resPts: { yb: [], rb: [] },
-        conv: [], rbFeed: [],
-        convPhase: 0, feedT: 0, rbT: 0, feeding: true,
+        conv: [],
+        convPhase: 0, feedT: 0, feeding: true,
         link: [[], []],
         band: -1, ryd: 0, image: 0,
         probe: -1, probeA: 0, cavA: 0.25,
@@ -1075,28 +1055,31 @@
             }
         }
 
-        /* conveyor feeding the Yb reservoir, Rb MOT feeding the Rb reservoir */
+        /* the conveyor delivers both species; each goes to its own reservoir */
         if (AS.feeding) {
             AS.convPhase += 60 * dt;
             AS.feedT -= dt;
             if (AS.feedT <= 0) {
-                AS.feedT = 0.45;
-                if (AS.res.yb + AS.conv.length < AG.resMax) AS.conv.push({ x: AG.convX + rand(-2, 2), y: -6 });
-            }
-            AS.rbT -= dt;
-            if (AS.rbT <= 0) {
-                AS.rbT = 0.35;
-                if (AS.res.rb + AS.rbFeed.length < AG.resMax) AS.rbFeed.push({ x: 1004, y: AG.resY + rand(-10, 10) });
+                AS.feedT = 0.2;
+                const inc = { yb: AS.res.yb, rb: AS.res.rb };
+                for (const p of AS.conv) inc[p.sp]++;
+                const sp = inc.yb <= inc.rb ? "yb" : "rb";
+                if (inc[sp] < AG.resMax) AS.conv.push({ sp, m: "down", x: AG.convX + rand(-2, 2), y: -6 });
             }
         }
-        for (const p of AS.conv) p.y += 60 * dt;
-        for (const p of AS.rbFeed) p.x -= 110 * dt;
         AS.conv = AS.conv.filter(p => {
-            if (p.y >= AG.resY - 6) { AS.res.yb = Math.min(AG.resMax, AS.res.yb + 1); return false; }
-            return true;
-        });
-        AS.rbFeed = AS.rbFeed.filter(p => {
-            if (p.x <= AG.res.rb.x + AG.res.rb.rx * 0.7) { AS.res.rb = Math.min(AG.resMax, AS.res.rb + 1); return false; }
+            if (p.m === "down") {
+                p.y += 60 * dt;
+                if (p.y >= AG.resY) { p.m = "side"; p.ty = AG.resY + rand(-8, 8); }
+                return true;
+            }
+            const R = AG.res[p.sp], dir = p.sp === "yb" ? -1 : 1;
+            p.x += dir * 90 * dt;
+            p.y += (p.ty - p.y) * Math.min(1, dt * 5);
+            if (dir * (p.x - R.x) >= -R.rx * 0.75) {
+                AS.res[p.sp] = Math.min(AG.resMax, AS.res[p.sp] + 1);
+                return false;
+            }
             return true;
         });
 
@@ -1199,17 +1182,7 @@
         }
         ctx.stroke();
         ctx.restore();
-        for (const p of AS.conv) drawAtom(p.x, p.y, "yb", 1, 0.6);
-
-        /* Rb arriving from the MOT */
-        ctx.setLineDash([2, 5]);
-        ctx.strokeStyle = hexA(C.rb, 0.25);
-        ctx.beginPath();
-        ctx.moveTo(1000, AG.resY);
-        ctx.lineTo(AG.res.rb.x + AG.res.rb.rx, AG.resY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        for (const p of AS.rbFeed) drawAtom(p.x, p.y, "rb", 1, 0.6);
+        for (const p of AS.conv) drawAtom(p.x, p.y, p.sp, 1, 0.6);
 
         for (const sp of ["yb", "rb"]) {
             const R = AG.res[sp], col = SP[sp];
@@ -1406,8 +1379,7 @@
     }
 
     function drawArrayLabels() {
-        text("conveyor from the octagon", AG.convX + 14, 58);
-        text("from Rb MOT", 990, AG.resY - 16, { align: "right" });
+        text("conveyor from the glass cell", AG.convX + 14, 58);
         text("Yb reservoir", AG.res.yb.x, AG.resY + 38, { align: "center" });
         text("Rb reservoir", AG.res.rb.x, AG.resY + 38, { align: "center" });
 
@@ -1463,7 +1435,7 @@
             label: "THE MACHINE · SCHEMATIC",
             title: "Two species, one machine.",
             text:
-                `<p>This machine traps two elements side by side: <span class="yb">ytterbium-171</span> and <span class="rb">rubidium-87</span>. Yb is collected in the upper chamber (the octagon) and carried down into a small glass cell, the science region, where Rb is captured directly.</p>
+                `<p>This machine works with two elements side by side: <span class="yb">ytterbium-171</span> and <span class="rb">rubidium-87</span>. Both start in ovens in the middle of the apparatus and fall down into a rectangular glass cell, where they are laser-cooled. From there they are carried up into the octagon, the science chamber where the actual quantum computing happens.</p>
                  <p>Why two species? Their optical transitions are hundreds of nanometres apart, so light meant for one barely touches the other. Yb stores the quantum information. Rb is the messenger that gets measured.</p>`,
             chips: [`${dot(C.yb)}¹⁷¹Yb · data qubits`, `${dot(C.rb)}⁸⁷Rb · ancilla qubits`, "ultra-high vacuum"],
             enter() {
@@ -1481,9 +1453,9 @@
             label: "LASER COOLING · MAGNETO-OPTICAL TRAPS",
             title: "Catch them with light.",
             text:
-                `<p>Leaving the oven, atoms move at hundreds of metres per second. Laser light tuned slightly below an atomic resonance pushes back on whichever atom moves into it, a kind of optical honey. Add a magnetic field gradient and the honey gets a centre: a <em>magneto-optical trap</em> (MOT).</p>
-                 <p>For <span class="yb">Yb</span>, a 2D MOT on the broad 399&nbsp;nm line catches the fast atoms and pushes them up. The narrow 556&nbsp;nm line then cools them to tens of microkelvin in the 3D MOT. <span class="rb">Rb</span> is cooled in the glass cell on its 780&nbsp;nm D2 line.</p>`,
-            chips: [`${dot(C.l399)}399 nm · 2D MOT`, `${dot(C.l556)}556 nm · 3D MOT`, `${dot(C.l780)}780 nm · Rb MOT`, "→ tens of µK"],
+                `<p>Leaving the ovens, atoms move at hundreds of metres per second. Laser beams tuned slightly below an atomic resonance are scattered mostly by atoms moving towards them, thanks to the Doppler shift. Every scattered photon kicks the atom backwards, so the atoms slow down from all directions. Add a magnetic field gradient and the same light also pushes them towards the centre: a <em>magneto-optical trap</em> (MOT).</p>
+                 <p>In the glass cell we form one 3D MOT per species: <span class="yb">Yb</span> on its narrow 556&nbsp;nm line and <span class="rb">Rb</span> on its 780&nbsp;nm D2 line. Both end up at tens of microkelvin.</p>`,
+            chips: [`${dot(C.l556)}556 nm · Yb MOT`, `${dot(C.l780)}780 nm · Rb MOT`, "→ tens of µK"],
             enter() {
                 machineReset();
                 MS.cooling = false;
@@ -1505,14 +1477,14 @@
             label: "OPTICAL CONVEYOR BELT",
             title: "Ride the conveyor belt.",
             text:
-                `<p>The octagon is a noisy place: hot atoms, background gas, stray light. The qubits live somewhere quieter, so the cold <span class="yb">Yb</span> has to travel about 55&nbsp;cm down, through two differential pumping tubes, into the glass cell.</p>
+                `<p>The glass cell is a noisy place: hot atoms from the ovens, background gas, scattered MOT light. The qubits need somewhere quieter, so the cold <span class="yb">Yb</span> and <span class="rb">Rb</span> atoms are carried up into the octagon.</p>
                  <p>The vehicle is a <em>moving optical lattice</em>. Two counter-propagating beams form a standing wave with a trap every λ/2. Shift one beam by Δν and the pattern slides along at <em>v&nbsp;=&nbsp;λΔν/2</em>, carrying the atoms with it.</p>
                  <p>Speed is free; acceleration costs trap depth, so Δν is ramped smoothly.</p>`,
-            chips: ["≈ 55 cm transport", "2 differential pumping stages", "v = λΔν/2"],
+            chips: ["glass cell → octagon", "both species", "v = λΔν/2"],
             enter() {
                 MS.panel = "lattice";
                 MS.cooling = true;
-                if (countMode("mot") < 30) {
+                if (countMode("mot", "yb") < 20 || countMode("mot", "rb") < 20) {
                     machineReset();
                     MS.lattice = false;
                     warmMachine(5);
@@ -1532,7 +1504,7 @@
                         MS.dnu < 1 ? `${Math.round(MS.dnu * 1000)} kHz` : `${MS.dnu.toFixed(2)} MHz`;
                     box.querySelector("#nap-dnu-r").innerHTML = MS.dnu === 0
                         ? `v = 0: a standing wave, the atoms stay put.<br><small>example: λ = 1064 nm</small>`
-                        : `v = <b>${v.toFixed(2)} m/s</b> · 55 cm in ≈ ${(0.55 / v).toFixed(2)} s at constant speed<br><small>example: λ = 1064 nm</small>`;
+                        : `v = λΔν/2 = <b>${v.toFixed(2)} m/s</b><br><small>example: λ = 1064 nm</small>`;
                 };
                 inp.addEventListener("input", update);
                 update();
@@ -1542,10 +1514,10 @@
         {
             nav: "Loading",
             view: "array",
-            label: "GLASS CELL · TWEEZER LOADING",
+            label: "OCTAGON · TWEEZER LOADING",
             title: "One atom per tweezer.",
             text:
-                `<p>Now we zoom into the glass cell. The conveyor keeps topping up a <span class="yb">Yb</span> reservoir while the <span class="rb">Rb</span> MOT feeds its own. Below them sits an array of <em>optical tweezers</em>: tightly focused laser beams, each a trap about a micrometre across.</p>
+                `<p>Now we zoom into the octagon. The conveyor keeps delivering atoms, and each species is collected in its own reservoir: <span class="yb">Yb</span> on one side, <span class="rb">Rb</span> on the other. Below them sits an array of <em>optical tweezers</em>: tightly focused laser beams, each a trap about a micrometre across.</p>
                  <p>Loading is a coin toss. When two atoms land in the same tweezer, light-assisted collisions kick both out. Each site ends up with exactly zero or one atom, about half the time. A fluorescence image tells us which.</p>`,
             chips: ["~50 % per site", "0 or 1 atom, never 2", "fluorescence imaging"],
             enter() {
@@ -1571,9 +1543,9 @@
             label: "REARRANGEMENT",
             title: "Build a perfect array.",
             text:
-                `<p>A random pattern isn't useful. A second set of tweezers, steered by acousto-optic deflectors (AODs), picks atoms out of the reservoirs and drops them into the holes. Many atoms move at once, one row at a time.</p>
+                `<p>A random pattern isn't useful. The static tweezer array is shaped by a <em>spatial light modulator</em> (SLM), which turns one laser beam into a whole pattern of traps. On top of that, moving tweezers steered by <em>acousto-optic deflectors</em> (AODs) pick atoms out of the reservoirs and drop them into the holes. Many atoms move at once, one row at a time.</p>
                  <p>The random pattern becomes a defect-free register: rows of <span class="yb">Yb</span> data qubits interleaved with <span class="rb">Rb</span> ancillas.</p>`,
-            chips: ["AOD-steered tweezers", "parallel moves", "defect-free 40/40"],
+            chips: ["SLM · static array", "AOD · moving tweezers", "defect-free 40/40"],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1694,7 +1666,7 @@
             title: "Never stop.",
             text:
                 `<p>Atoms don't last forever. Background-gas collisions knock them out, and a measured ancilla is heated and best thrown away. A conventional machine has to stop, reload everything and start over.</p>
-                 <p>This one keeps going. The conveyor keeps delivering <span class="yb">Yb</span>, the <span class="rb">Rb</span> MOT keeps its reservoir full, and fresh atoms are moved into every hole while the computation continues. Toggle reloading to compare.</p>`,
+                 <p>This one keeps going. The MOTs keep producing cold atoms, the conveyor keeps delivering <span class="yb">Yb</span> and <span class="rb">Rb</span> into the reservoirs, and fresh atoms are moved into every hole while the computation continues. Toggle reloading to compare.</p>`,
             chips: ["lost atom → replaced", "used ancillas recycled", "hours, not seconds"],
             enter() {
                 arrayEnter();
@@ -1868,7 +1840,7 @@
         /* zoom between machine and glass cell; q = 0 machine, q = 1 array */
         const p = ease(clamp(trans.t / trans.dur, 0, 1));
         const q = trans.from === "machine" ? p : 1 - p;
-        const Z = 8, cx = M.cellC.x, cy = M.cellC.y;
+        const Z = 8, cx = M.zoom.x, cy = M.zoom.y;
         const km = 1 + (Z - 1) * q;
         drawLayer("machine", km, q * (W / 2 - Z * cx), q * (H / 2 - Z * cy), 1 - q);
         const ka = lerp(0.3, 1, q);
