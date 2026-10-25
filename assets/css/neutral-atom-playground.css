@@ -224,6 +224,52 @@ html:not([data-theme="dark"]) .nap-footnote { color: #6b7380; }
 }
 
 
+/* ---------- key papers ---------- */
+
+.nap-papers {
+    margin-top: 1rem;
+    border: 1px solid var(--nap-line);
+    border-radius: 10px;
+    font-size: 0.78rem;
+}
+
+.nap-papers summary {
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+    color: var(--nap-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+}
+
+.nap-papers summary:hover { color: var(--nap-text); }
+
+.nap-papers ol {
+    margin: 0;
+    padding: 0 0.9rem 0.7rem 2rem;
+}
+
+.nap-papers li {
+    margin: 0 0 0.55rem;
+    line-height: 1.4;
+    color: var(--nap-dim);
+}
+
+.nap-papers li::marker { color: var(--nap-yb); }
+
+.nap-papers a {
+    color: var(--nap-yb);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.nap-papers a:hover { text-decoration: underline; }
+
+.nap-papers .ref { color: var(--nap-dim); }
+
+.nap-papers .note { color: #c4cedb; }
+
+
 /* ---------- step-specific controls ---------- */
 
 .nap-control:empty { display: none; }

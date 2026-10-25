@@ -32,6 +32,8 @@
         title: document.getElementById("nap-title"),
         text: document.getElementById("nap-text"),
         chips: document.getElementById("nap-chips"),
+        papers: document.getElementById("nap-papers"),
+        papersBox: document.getElementById("nap-papers-box"),
         control: document.getElementById("nap-control"),
         prev: document.getElementById("nap-prev"),
         next: document.getElementById("nap-next"),
@@ -290,7 +292,6 @@
         },
         cell: { x: 490, y: 448, w: 60, h: 150 },
         mot: { yb: { x: 520, y: 500 }, rb: { x: 520, y: 552 } },
-        sci: { yb: { x: 512, y: 126 }, rb: { x: 528, y: 136 } },
         zoom: { x: 520, y: 130 }
     };
 
@@ -298,10 +299,126 @@
         p: [],
         cooling: false, beamA: 0,
         lattice: false, latA: 0,
-        phase: 0, dnu: 1.0,
-        spawn: 0, packet: 0, nextSp: "yb",
-        panel: "legend"
+        phase: 0, dnu: 1.0, vel: 0,
+        spawn: 0,
+        panel: "legend", status: "",
+        /* conveyor cycle: load -> move -> stop -> grab -> release -> carry -> park */
+        cv: { ph: "load", t: 0, sp: "yb", phase0: 0, D: 0, T: 1, ring: 0, x: 520 }
     };
+
+    /* tiny storage tweezers inside the octagon */
+    const MZ = {
+        y: 128,                                      /* where the conveyor stops */
+        rows: [116, 124, 132, 140], dx: 4,
+        x: { load: 520, yb: 496, rb: 544 }
+    };
+    function mzSites(x0) {
+        const s = [];
+        for (const y of MZ.rows) for (const d of [-1, 1]) s.push([x0 + d * MZ.dx, y]);
+        return s;
+    }
+    const CV_DUR = { load: 0.9, stop: 0.5, grab: 0.5, release: 0.4, carry: 0.8, park: 0.4 };
+    const CV_MSG = {
+        load: sp => `standing wave · load ${spName(sp)} from the MOT`,
+        move: () => "Δν ramped up and down · the belt moves",
+        stop: () => "Δν = 0 · stopped in the octagon",
+        grab: () => "storage tweezers on",
+        release: () => "lattice off",
+        carry: sp => `${spName(sp)} atoms → storage`,
+        park: () => "parked · next batch"
+    };
+    const spName = sp => (sp === "yb" ? "Yb" : "Rb");
+
+    function cvPhase(ph) {
+        MS.cv.ph = ph;
+        MS.cv.t = 0;
+        MS.status = CV_MSG[ph](MS.cv.sp);
+    }
+
+    function resetConveyor() {
+        Object.assign(MS.cv, { ph: "load", t: 0, sp: "yb", ring: 0, x: MZ.x.load });
+        MS.vel = 0;
+        MS.status = "";
+        for (const p of MS.p) if (p.m === "lat" || p.m === "cap") p.m = "fade";
+    }
+
+    function updateConveyor(dt) {
+        const cv = MS.cv;
+        if (!MS.lattice) { MS.vel = 0; return; }
+        cv.t += dt;
+        const p = cv.ph === "move" ? clamp(cv.t / cv.T, 0, 1) : clamp(cv.t / (CV_DUR[cv.ph] || 1), 0, 1);
+        MS.vel = 0;
+
+        switch (cv.ph) {
+            case "load":
+                MS.latA = Math.min(1, MS.latA + dt * 3);
+                if (p >= 1 && MS.dnu > 0 && countMode("mot", cv.sp) > 10) {
+                    /* the standing wave picks up a packet from the MOT */
+                    const s = 7, off = (((-MS.phase) % s) + s) % s;
+                    const pick = MS.p.filter(q => q.m === "mot" && q.sp === cv.sp)
+                        .sort((a, b) => Math.abs(a.y - M.mot[cv.sp].y) - Math.abs(b.y - M.mot[cv.sp].y)).slice(0, 8);
+                    for (const q of pick) {
+                        q.m = "lat";
+                        q.x0 = M.ax + rand(-2.5, 2.5);
+                        q.y = off + Math.round((q.y - off) / s) * s;
+                        q.yl = q.y;
+                    }
+                    cv.phase0 = MS.phase;
+                    cv.D = M.mot[cv.sp].y - MZ.y;
+                    cv.T = (Math.PI / 2) * cv.D / latticeSpeed();
+                    cvPhase("move");
+                }
+                break;
+            case "move": {
+                const d = cv.D * (1 - Math.cos(Math.PI * p)) / 2;
+                MS.vel = (Math.PI / 2) * (cv.D / cv.T) * Math.sin(Math.PI * p);
+                MS.phase = cv.phase0 + d;
+                if (p >= 1) cvPhase("stop");
+                break;
+            }
+            case "stop":
+                if (p >= 1) cvPhase("grab");
+                break;
+            case "grab":
+                cv.ring = p;
+                if (p >= 1) {
+                    const sites = mzSites(MZ.x.load), used = new Array(sites.length).fill(0);
+                    for (const q of MS.p) {
+                        if (q.m !== "lat") continue;
+                        let best = -1, bd = 9;
+                        sites.forEach(([sx, sy], i) => {
+                            const d = Math.hypot(q.x - sx, q.y - sy);
+                            if (d < bd && used[i] < 1) { bd = d; best = i; }
+                        });
+                        if (best >= 0) { q.m = "cap"; q.site = best; used[best]++; }
+                        else { q.m = "fade"; q.vx = randn() * 10; q.vy = 30; }
+                    }
+                    cvPhase("release");
+                }
+                break;
+            case "release":
+                MS.latA = 1 - p;
+                if (p >= 1) cvPhase("carry");
+                break;
+            case "carry":
+                cv.x = lerp(MZ.x.load, MZ.x[cv.sp], ease(p));
+                if (p >= 1) {
+                    /* the previous batch has been used up by now */
+                    for (const q of MS.p) if (q.m === "park" && q.sp === cv.sp) q.m = "fade";
+                    for (const q of MS.p) if (q.m === "cap") { q.m = "park"; q.age = 0; }
+                    cvPhase("park");
+                }
+                break;
+            case "park":
+                cv.ring = 1 - p;
+                if (p >= 1) {
+                    cv.x = MZ.x.load;
+                    cv.sp = cv.sp === "yb" ? "rb" : "yb";
+                    cvPhase("load");
+                }
+                break;
+        }
+    }
 
     function cellBounce(p) {
         const c = M.cell;
@@ -325,7 +442,7 @@
         MS.phase = 0;
     }
 
-    function latticeSpeed() { return 90 * MS.dnu; }          // px/s on screen
+    function latticeSpeed() { return 150 * MS.dnu; }         // peak speed, px/s on screen
 
     function motStep(p, cx, cy, dt, g, w2, D) {
         const s = Math.sqrt(2 * D * dt);
@@ -353,10 +470,8 @@
 
     function updateMachine(dt) {
         MS.beamA += ((MS.cooling ? 1 : 0) - MS.beamA) * Math.min(1, dt * 3);
-        MS.latA += ((MS.lattice ? 1 : 0) - MS.latA) * Math.min(1, dt * 3);
-
-        const v = latticeSpeed();
-        if (MS.lattice) MS.phase += v * dt;
+        if (!MS.lattice) MS.latA = Math.max(0, MS.latA - dt * 3);
+        updateConveyor(dt);
 
         /* atoms leaving both ovens */
         MS.spawn -= dt;
@@ -375,27 +490,12 @@
             }
         }
 
-        /* load packets from the MOTs into the moving lattice, alternating species */
-        if (MS.lattice && v > 2) {
-            MS.packet -= dt;
-            const sp = MS.nextSp;
-            if (MS.packet <= 0 && countMode("mot", sp) > 12) {
-                MS.packet = 0.5;
-                MS.nextSp = sp === "yb" ? "rb" : "yb";
-                const s = 7, off = (((-MS.phase) % s) + s) % s;
-                const pick = MS.p.filter(p => p.m === "mot" && p.sp === sp).sort(() => Math.random() - 0.5).slice(0, 6);
-                for (const p of pick) {
-                    p.m = "lat";
-                    p.x0 = M.ax + rand(-2.5, 2.5);
-                    p.y = off + Math.round((p.y - off) / s) * s;
-                }
-            }
-        }
+        const cvSites = mzSites(MS.cv.x);
 
         for (const p of MS.p) {
             p.age += dt;
             if (p.m !== "fade") p.a = Math.min(1, p.a + dt * 4);
-            const mot = M.mot[p.sp], sci = M.sci[p.sp];
+            const mot = M.mot[p.sp];
 
             switch (p.m) {
                 case "beam":            /* out of the oven, into the vertical tube */
@@ -428,18 +528,23 @@
                     break;
 
                 case "lat":             /* riding the conveyor up to the octagon */
-                    p.y -= v * dt;
+                    p.y = p.yl - (MS.phase - MS.cv.phase0);
                     p.x = p.x0 + Math.sin(p.age * 9 + p.seed) * 0.8;
-                    if (p.y <= sci.y + 2) {
-                        p.m = "sci";
-                        p.vx = randn() * 10;
-                        p.vy = -v * 0.4;
-                    }
                     break;
 
-                case "sci":
-                    motStep(p, sci.x, sci.y, dt, 5, 14, 3000);
+                case "cap": {           /* held by the small storage array */
+                    const [sx, sy] = cvSites[p.site], f = Math.min(1, dt * 12);
+                    p.x += (sx - p.x) * f;
+                    p.y += (sy - p.y) * f;
                     break;
+                }
+
+                case "park": {          /* parked in the storage region */
+                    const [sx, sy] = mzSites(MZ.x[p.sp])[p.site];
+                    p.x = sx + Math.sin(p.age * 3 + p.seed) * 0.4;
+                    p.y = sy + Math.cos(p.age * 2.6 + p.seed) * 0.4;
+                    break;
+                }
 
                 case "fade":
                     p.a -= dt * 1.5;
@@ -451,7 +556,6 @@
 
         for (const sp of ["yb", "rb"]) {
             retireOldest("mot", sp, 40);
-            retireOldest("sci", sp, 28);
         }
 
         MS.p = MS.p.filter(p => p.a > 0);
@@ -681,21 +785,43 @@
             }
 
             text("v = λ · Δν / 2", x + w / 2, 372, { align: "center", color: C.text, size: 15, weight: 600 });
-            text(MS.dnu === 0 ? "Δν = 0: standing wave, atoms stay" : "Δν > 0: the wells move  →",
+            text(MS.vel < 1 ? "Δν = 0: standing wave, atoms stay" : "Δν > 0: the wells move  →",
                 x + w / 2, 402, { align: "center", size: 10 });
         }
     }
 
     let latticePhaseInset = 0;
 
+    function drawMiniStorage() {
+        if (!MS.lattice) return;
+        ctx.lineWidth = 0.8;
+        for (const sp of ["yb", "rb"]) {
+            ctx.strokeStyle = hexA(C.tweezer, 0.22);
+            for (const [x, y] of mzSites(MZ.x[sp])) ring(x, y, 2.6);
+        }
+        const a = MS.cv.ring;
+        if (a > 0.01) {
+            for (const [x, y] of mzSites(MS.cv.x)) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(x, y, 6, C.tweezer, 0.5 * a);
+                ctx.globalCompositeOperation = "source-over";
+                ctx.strokeStyle = hexA(C.tweezer, 0.9 * a);
+                ring(x, y, 2.6);
+            }
+        }
+        ctx.lineWidth = 1;
+    }
+
     function drawMachineView() {
         drawHardware();
         drawMachineBeams();
         drawMachineLattice();
+        drawMiniStorage();
 
-        for (const p of MS.p) drawAtom(p.x, p.y, p.sp, p.a, 0.75);
+        for (const p of MS.p) drawAtom(p.x, p.y, p.sp, p.a, p.m === "park" || p.m === "cap" ? 0.45 : 0.75);
 
         drawMachineLabels();
+        if (MS.lattice && MS.status) text(MS.status, compact ? 980 : 985, 24, { align: "right", color: C.accent, size: 11 });
         drawMachinePanel();
     }
 
@@ -833,7 +959,6 @@
 
     const LD = { sp: "yb", ph: "idle", t: 0, cloud: [], lat: 0, ring: 0, x: ST.x.load, disp: 0, status: false };
     const LD_DUR = { arrive: 1.6, hold: 0.6, overlap: 0.6, release: 0.7, move: 1.0, handoff: 0.5 };
-    const spName = sp => (sp === "yb" ? "Yb" : "Rb");
     const LD_MSG = {
         arrive: sp => `conveyor brings a ${spName(sp)} cloud`,
         hold: () => "Δν → 0 · the conveyor stops and holds the cloud",
@@ -1506,6 +1631,213 @@
 
 
     /* =========================================================
+       CODE VIEW  (distance-3 rotated surface code)
+       ========================================================= */
+
+    const SC = { x0: 300, y0: 190, P: 120 };
+    const dq = (i, j) => [SC.x0 + i * SC.P, SC.y0 + j * SC.P];
+
+    /* plaquette (a, b) covers data (a..a+1, b..b+1); type by checkerboard,
+       weight-2 plaquettes only on the matching boundaries */
+    const PLAQ = [[0, 0], [1, 0], [0, 1], [1, 1], [0, -1], [1, 2], [-1, 1], [2, 0]].map(([a, b]) => {
+        const data = [[a, b], [a + 1, b], [a, b + 1], [a + 1, b + 1]]
+            .map(d => (d[0] >= 0 && d[0] <= 2 && d[1] >= 0 && d[1] <= 2 ? d : null));
+        const type = (a + b) % 2 === 0 ? "Z" : "X";
+        let [ax, ay] = dq(a + 0.5, b + 0.5);
+        if (b < 0) ay += 0.22 * SC.P;
+        if (b > 1) ay -= 0.22 * SC.P;
+        if (a < 0) ax += 0.22 * SC.P;
+        if (a > 1) ax -= 0.22 * SC.P;
+        return { a, b, data, type, ax, ay, flag: 0 };
+    });
+    const typeCol = t => (t === "X" ? C.rydberg : C.l556);
+
+    const CS = { err: null, errA: 0, layer: -1, linkA: 0, syndA: 0, decA: 0, fix: 0, rounds: 0, fixed: 0, readout: 0 };
+
+    function codeReset() {
+        Object.assign(CS, { err: null, errA: 0, layer: -1, linkA: 0, syndA: 0, decA: 0, fix: 0, readout: 0 });
+        for (const q of PLAQ) q.flag = 0;
+    }
+
+    function hits(q, e) {
+        if (!e) return false;
+        const on = q.data.some(d => d && d[0] === e.i && d[1] === e.j);
+        if (!on) return false;
+        return q.type === "Z" ? e.type !== "Z" : e.type !== "X";
+    }
+
+    function codeRound() {
+        const acts = [];
+        acts.push({
+            dur: 1.3,
+            start() {
+                codeReset();
+                if (Math.random() < 0.85) {
+                    CS.err = { i: Math.floor(rand(0, 3)), j: Math.floor(rand(0, 3)), type: ["X", "Z", "X", "Z", "Y"][Math.floor(rand(0, 5))] };
+                    AS.status = "an error strikes · we can't see it directly";
+                } else {
+                    AS.status = "a quiet round · maybe no error";
+                }
+            },
+            update(p) { CS.errA = CS.err ? Math.min(1, p * 3) : 0; }
+        });
+        for (let k = 0; k < 4; k++) {
+            acts.push({
+                dur: 0.5,
+                start() { CS.layer = k; AS.status = `stabilizer round · CZ layer ${k + 1}/4`; },
+                update(p) { CS.linkA = Math.sin(Math.PI * p); }
+            });
+        }
+        acts.push({
+            dur: 1.4,
+            start() {
+                CS.layer = -1;
+                for (const q of PLAQ) q.flag = hits(q, CS.err) ? 1 : 0;
+                const n = PLAQ.filter(q => q.flag).length;
+                AS.status = `cavity readout of the ancillas · ${n} stabilizer${n === 1 ? "" : "s"} flipped`;
+            },
+            update(p) { CS.readout = Math.sin(Math.PI * Math.min(1, p * 2)); CS.syndA = Math.min(1, p * 2.5); }
+        });
+        acts.push({
+            dur: 1.4,
+            start() {
+                const e = CS.err;
+                AS.status = e ? `decoder: ${e.type} error on data qubit ${e.j * 3 + e.i + 1}` : "all stabilizers +1 · nothing to correct";
+            },
+            update(p) { CS.decA = CS.err ? Math.min(1, p * 2) : 0; }
+        });
+        acts.push({
+            dur: 1.1,
+            start() {
+                CS.rounds++;
+                if (!CS.err) return;
+                CS.fixed++;
+                AS.status = `apply ${CS.err.type} correction · logical qubit intact`;
+            },
+            update(p) { CS.fix = CS.err ? Math.sin(Math.PI * p) : 0; CS.errA = CS.err ? 1 - p : 0; },
+            end() { CS.err = null; }
+        });
+        acts.push({ dur: 1.0, update(p) { CS.syndA = CS.decA = 1 - p; } });
+        return acts;
+    }
+
+    function drawCodeView() {
+        const t = simTime;
+
+        /* plaquettes */
+        for (const q of PLAQ) {
+            const col = typeCol(q.type), pts = q.data.filter(Boolean).map(d => dq(d[0], d[1]));
+            ctx.fillStyle = hexA(col, 0.10 + 0.18 * q.flag * CS.syndA);
+            ctx.strokeStyle = hexA(col, 0.45);
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (pts.length === 4) {
+                ctx.moveTo(pts[0][0], pts[0][1]);
+                ctx.lineTo(pts[1][0], pts[1][1]);
+                ctx.lineTo(pts[3][0], pts[3][1]);
+                ctx.lineTo(pts[2][0], pts[2][1]);
+                ctx.closePath();
+            } else {
+                const [A, B] = pts, cx = (A[0] + B[0]) / 2, cy = (A[1] + B[1]) / 2;
+                const r = Math.hypot(B[0] - A[0], B[1] - A[1]) / 2;
+                const out = Math.atan2(q.ay - cy, q.ax - cx);
+                ctx.arc(cx, cy, r, out - Math.PI / 2, out + Math.PI / 2);
+                ctx.closePath();
+            }
+            ctx.fill();
+            ctx.stroke();
+            text(q.type, q.ax + 16, q.ay - 14, { size: 10, color: hexA(col, 0.9) });
+        }
+
+        /* CZ links of the current layer */
+        if (CS.layer >= 0 && CS.linkA > 0.01) {
+            for (const q of PLAQ) {
+                const d = q.data[CS.layer];
+                if (!d) continue;
+                const [x, y] = dq(d[0], d[1]);
+                beam(q.ax, q.ay, x, y, C.rydberg, 5, 0.9 * CS.linkA);
+            }
+        }
+
+        /* decoder lines from flipped stabilizers to the faulty qubit */
+        if (CS.err && CS.decA > 0.01) {
+            const [ex, ey] = dq(CS.err.i, CS.err.j);
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = hexA(C.accent, 0.8 * CS.decA);
+            ctx.lineWidth = 1.5;
+            for (const q of PLAQ) {
+                if (!q.flag) continue;
+                ctx.beginPath();
+                ctx.moveTo(q.ax, q.ay);
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        /* data qubits (Yb) */
+        for (let j = 0; j < 3; j++) {
+            for (let i = 0; i < 3; i++) {
+                const [x, y] = dq(i, j), hit = CS.err && CS.err.i === i && CS.err.j === j;
+                if (hit && CS.errA > 0.01) {
+                    ctx.globalCompositeOperation = "lighter";
+                    glow(x, y, 34, "#ef4444", 0.55 * CS.errA * (0.8 + 0.2 * Math.sin(t * 10)));
+                    ctx.globalCompositeOperation = "source-over";
+                    text(CS.err.type, x + 14, y - 16, { size: 13, weight: 700, color: "#f87171", alpha: CS.errA });
+                }
+                if (hit && CS.fix > 0.01) {
+                    ctx.strokeStyle = hexA(C.accent, CS.fix);
+                    ctx.lineWidth = 2;
+                    ring(x, y, 12 + 14 * CS.fix);
+                }
+                let col = C.yb;
+                if (CS.linkA > 0.01 && CS.layer >= 0) col = mixHex(C.yb, C.rydberg, 0.5 * CS.linkA);
+                drawAtom(x, y, "yb", 1, 1.25, col);
+                text(String(j * 3 + i + 1), x - 14, y + 16, { size: 9, color: C.faint });
+            }
+        }
+
+        /* ancillas (Rb) with their syndrome bit */
+        for (const q of PLAQ) {
+            if (CS.readout > 0.01) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(q.ax, q.ay, 26, q.flag ? C.photon : C.rb, 0.6 * CS.readout * (q.flag ? 1 : 0.4));
+                ctx.globalCompositeOperation = "source-over";
+            }
+            drawAtom(q.ax, q.ay, "rb", 1, 1.05);
+            if (CS.syndA > 0.01) {
+                text(q.flag ? "−1" : "+1", q.ax, q.ay + 20, {
+                    align: "center", size: 10, weight: 700,
+                    color: q.flag ? C.accent : C.faint, alpha: CS.syndA
+                });
+            }
+        }
+
+        /* side panel */
+        if (!compact) {
+            const x = 700, y = 170, w = 285, h = 300;
+            panel(x, y, w, h, "SURFACE CODE · d = 3");
+            drawAtom(732, 216, "yb", 1, 1.1);
+            text("9 Yb data qubits", 752, 216, { color: C.text });
+            drawAtom(732, 248, "rb", 1, 1.1);
+            text("8 Rb ancillas · measure", 752, 248, { color: C.text });
+            ctx.fillStyle = hexA(C.rydberg, 0.25);
+            ctx.fillRect(724, 272, 16, 16);
+            text("X stabilizer · finds Z errors", 752, 280, { size: 10 });
+            ctx.fillStyle = hexA(C.l556, 0.25);
+            ctx.fillRect(724, 300, 16, 16);
+            text("Z stabilizer · finds X errors", 752, 308, { size: 10 });
+            text("1 logical qubit", x + 16, 352, { color: C.text, size: 12, weight: 600 });
+            text("corrects any single-qubit error", x + 16, 372, { size: 10 });
+            text(`rounds ${CS.rounds}`, x + 16, 410, { size: 10, color: C.text });
+            text(`errors corrected ${CS.fixed}`, x + 16, 430, { size: 10, color: C.text });
+        }
+
+        if (AS.status) text(AS.status, compact ? 980 : 985, 24, { align: "right", color: C.accent, size: 11 });
+    }
+
+
+    /* =========================================================
        STEPS
        ========================================================= */
 
@@ -1522,6 +1854,7 @@
                 `<p>This machine works with two elements side by side: <span class="yb">ytterbium-171</span> and <span class="rb">rubidium-87</span>. Both start in ovens in the middle of the apparatus and fall down into a rectangular glass cell, where they are laser-cooled. From there they are carried up into the octagon, the science chamber where the actual quantum computing happens.</p>
                  <p>Why two species? Their optical transitions are hundreds of nanometres apart, so light meant for one barely touches the other. Yb stores the quantum information. Rb is the messenger that gets measured.</p>`,
             chips: [`${dot(C.yb)}¹⁷¹Yb · data qubits`, `${dot(C.rb)}⁸⁷Rb · ancilla qubits`, "ultra-high vacuum"],
+            papers: [["Saffman, Walker & Mølmer", "Rev. Mod. Phys. 82, 2313 (2010)", "https://doi.org/10.1103/RevModPhys.82.2313", "The standard review: Rydberg blockade as the basis of neutral-atom quantum computing."], ["Singh et al.", "Phys. Rev. X 12, 011040 (2022)", "https://doi.org/10.1103/PhysRevX.12.011040", "First dual-element (Rb + Cs) tweezer array, 512 sites, negligible crosstalk."], ["Anand et al.", "Nat. Phys. 20, 1744 (2024)", "https://doi.org/10.1038/s41567-024-02638-2", "Rb–Cs interspecies Rydberg gate and Bell state; readout via the other species."], ["Ma et al.", "Phys. Rev. X 12, 021028 (2022)", "https://doi.org/10.1103/PhysRevX.12.021028", "Universal gate operations on ¹⁷¹Yb nuclear-spin qubits in tweezers."]],
             enter() {
                 machineReset();
                 MS.cooling = false;
@@ -1540,6 +1873,7 @@
                 `<p>Leaving the ovens, atoms move at hundreds of metres per second. Laser beams tuned slightly below an atomic resonance are scattered mostly by atoms moving towards them, thanks to the Doppler shift. Every scattered photon kicks the atom backwards, so the atoms slow down from all directions. Add a magnetic field gradient and the same light also pushes them towards the centre: a <em>magneto-optical trap</em> (MOT).</p>
                  <p>In the glass cell we form one 3D MOT per species: <span class="yb">Yb</span> on its narrow 556&nbsp;nm line and <span class="rb">Rb</span> on its 780&nbsp;nm D2 line. Both end up at tens of microkelvin.</p>`,
             chips: [`${dot(C.l556)}556 nm · Yb MOT`, `${dot(C.l780)}780 nm · Rb MOT`, "→ tens of µK"],
+            papers: [["Chu et al.", "Phys. Rev. Lett. 55, 48 (1985)", "https://doi.org/10.1103/PhysRevLett.55.48", "First 3D optical molasses: viscous laser cooling of atoms."], ["Raab et al.", "Phys. Rev. Lett. 59, 2631 (1987)", "https://doi.org/10.1103/PhysRevLett.59.2631", "The first magneto-optical trap."], ["Kuwamoto et al.", "Phys. Rev. A 60, R745 (1999)", "https://doi.org/10.1103/PhysRevA.60.R745", "Yb MOT on the narrow 556 nm intercombination line."]],
             enter() {
                 machineReset();
                 MS.cooling = false;
@@ -1563,8 +1897,9 @@
             text:
                 `<p>The glass cell is a noisy place: hot atoms from the ovens, background gas, scattered MOT light. The qubits need somewhere quieter, so the cold <span class="yb">Yb</span> and <span class="rb">Rb</span> atoms are carried up into the octagon.</p>
                  <p>The vehicle is a <em>moving optical lattice</em>. Two counter-propagating beams form a standing wave with a trap every λ/2. Shift one beam by Δν and the pattern slides along at <em>v&nbsp;=&nbsp;λΔν/2</em>, carrying the atoms with it.</p>
-                 <p>Speed is free; acceleration costs trap depth, so Δν is ramped smoothly, and back down to zero to stop the belt in the octagon.</p>`,
-            chips: ["glass cell → octagon", "both species", "v = λΔν/2"],
+                 <p>The belt runs in batches. It loads a packet from the MOT, Δν is ramped up and smoothly back down to zero, and the belt stops in the octagon. Small storage tweezers take the atoms off, the lattice is switched off, and the atoms are parked. Then the next batch starts, alternating between the species.</p>`,
+            chips: ["glass cell → octagon", "batches · stop and go", "v = λΔν/2"],
+            papers: [["Kuhr et al.", "Science 293, 278 (2001)", "https://doi.org/10.1126/science.1062725", "On-demand delivery of single atoms with a moving standing wave."], ["Schrader et al.", "Appl. Phys. B 73, 819 (2001)", "https://doi.org/10.1007/s003400100722", "The optical conveyor belt for single neutral atoms."], ["Matthies et al.", "Phys. Rev. A 109, 023321 (2024)", "https://doi.org/10.1103/PhysRevA.109.023321", "Cs and Rb transported ~37 cm in under 25 ms."], ["Chiu et al.", "Nature 646, 1075 (2025)", "https://doi.org/10.1038/s41586-025-09596-6", "Lattice conveyor belts feed atom reservoirs into the science region."]],
             enter() {
                 MS.panel = "lattice";
                 MS.cooling = true;
@@ -1574,10 +1909,11 @@
                     warmMachine(5);
                 }
                 MS.lattice = true;
+                resetConveyor();
             },
             control(box) {
                 box.innerHTML =
-                    `<label for="nap-dnu">Frequency difference Δν <b id="nap-dnu-v"></b></label>
+                    `<label for="nap-dnu">Peak frequency difference Δν <b id="nap-dnu-v"></b></label>
                      <input type="range" id="nap-dnu" min="0" max="3" step="0.05" value="${MS.dnu}">
                      <div class="readout" id="nap-dnu-r"></div>`;
                 const inp = box.querySelector("#nap-dnu");
@@ -1588,7 +1924,7 @@
                         MS.dnu < 1 ? `${Math.round(MS.dnu * 1000)} kHz` : `${MS.dnu.toFixed(2)} MHz`;
                     box.querySelector("#nap-dnu-r").innerHTML = MS.dnu === 0
                         ? `v = 0: a standing wave, the atoms stay put.<br><small>example: λ = 1064 nm</small>`
-                        : `v = λΔν/2 = <b>${v.toFixed(2)} m/s</b><br><small>example: λ = 1064 nm</small>`;
+                        : `peak speed v = λΔν/2 = <b>${v.toFixed(2)} m/s</b><br><small>example: λ = 1064 nm</small>`;
                 };
                 inp.addEventListener("input", update);
                 update();
@@ -1604,6 +1940,7 @@
                 `<p>Now we zoom into the octagon. Here the conveyor belt stops: Δν is ramped to zero and the lattice holds a cloud of cold atoms in place. A <em>storage tweezer array</em> is switched on right on top of the cloud, and then the lattice is switched off. Atoms sitting in a storage tweezer stay put, the rest fall away.</p>
                  <p>The storage array, now holding a few atoms per site, is moved over into the storage region. The conveyor is free again and brings the next cloud. Batches alternate between <span class="yb">Yb</span> and <span class="rb">Rb</span>, each parked on its own side.</p>`,
             chips: ["conveyor stops · Δν → 0", "storage tweezers overlap the cloud", "lattice off → move to storage"],
+            papers: [["Norcia et al.", "PRX Quantum 5, 030316 (2024)", "https://doi.org/10.1103/PRXQuantum.5.030316", "¹⁷¹Yb reservoir refills a 1225-site array to 99 % occupancy, repeatedly."], ["Pause et al.", "Optica 11, 222 (2024)", "https://doi.org/10.1364/OPTICA.513551", "Tiled tweezer arrays with >1000 atoms; one array resupplies the other."], ["Gyger et al.", "Phys. Rev. Research 6, 033104 (2024)", "https://doi.org/10.1103/PhysRevResearch.6.033104", "Continuously operated >1000-atom arrays with atoms recycled from a lattice."]],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1627,6 +1964,7 @@
                 `<p>Below the storage sits the <em>science array</em>: a static pattern of optical tweezers, each a trap about a micrometre across, shaped by a <em>spatial light modulator</em> (SLM). Moving tweezers steered by <em>acousto-optic deflectors</em> (AODs) pull single atoms out of the storage sites and drop them into the science tweezers. Many atoms move at once, one row at a time.</p>
                  <p>Not every transfer works. A fluorescence image shows the holes, and a second pass fills them. The result is a defect-free register: rows of <span class="yb">Yb</span> data qubits interleaved with <span class="rb">Rb</span> ancillas. Meanwhile the conveyor keeps topping up the storage.</p>`,
             chips: ["single-atom pick-up", "AOD · moving tweezers", "SLM · science array", "defect-free 40/40"],
+            papers: [["Schlosser et al.", "Nature 411, 1024 (2001)", "https://doi.org/10.1038/35082512", "Single atoms in a microscopic tweezer via collisional blockade."], ["Barredo et al.", "Science 354, 1021 (2016)", "https://doi.org/10.1126/science.aah3778", "Atom-by-atom assembly of defect-free 2D arrays."], ["Endres et al.", "Science 354, 1024 (2016)", "https://doi.org/10.1126/science.aah3752", "Real-time rearrangement into defect-free 1D arrays."], ["Manetsch et al.", "Nature 647, 60 (2025)", "https://doi.org/10.1038/s41586-025-09641-4", "6100 atoms in ~12,000 tweezers, 12.6 s coherence."]],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1679,6 +2017,7 @@
                 `<p>Each atom stores a qubit in two long-lived ground states. For <span class="yb">¹⁷¹Yb</span> that is the nuclear spin, which barely notices its environment. Single-qubit rotations are laser or RF pulses.</p>
                  <p>For entanglement, atoms are briefly excited to a <em>Rydberg state</em>: a giant atom whose strong interaction stops its neighbour from being excited too (the Rydberg blockade). That gives a controlled-Z gate, even between Yb and Rb. Afterwards each ancilla carries information about its data partner, for example a parity check for error correction.</p>`,
             chips: [`${dot(C.rydberg)}Rydberg blockade`, "CZ gate · sub-µs", "Yb ↔ Rb"],
+            papers: [["Jaksch et al.", "Phys. Rev. Lett. 85, 2208 (2000)", "https://doi.org/10.1103/PhysRevLett.85.2208", "The original Rydberg-blockade gate proposal."], ["Evered et al.", "Nature 622, 268 (2023)", "https://doi.org/10.1038/s41586-023-06481-y", "99.5 % CZ gates on up to 60 atoms in parallel."], ["Peper et al.", "Phys. Rev. X 15, 011009 (2025)", "https://doi.org/10.1103/PhysRevX.15.011009", "¹⁷¹Yb Rydberg spectroscopy and modelling; CZ fidelity 0.994."], ["Muniz et al.", "PRX Quantum 6, 020334 (2025)", "https://doi.org/10.1103/PRXQuantum.6.020334", "¹⁷¹Yb nuclear-spin CZ: 99.40 % raw, 99.72 % post-selected."]],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1707,6 +2046,7 @@
                 `<p>To catch errors mid-computation, the ancillas have to be measured without disturbing the data. A camera image takes milliseconds and scatters light all over the array.</p>
                  <p>Instead, the <span class="rb">Rb</span> ancillas are shuttled into the mode of an <em>optical cavity</em>, two mirrors facing each other. An ancilla in the bright state scatters photons into the cavity, which funnels them onto a single-photon detector, so the state is read out in microseconds. The <span class="yb">Yb</span> data qubits have no transition anywhere near 780&nbsp;nm and stay coherent. The result feeds forward into the next operation.</p>`,
             chips: ["µs instead of ms", "site-selective", "data qubits untouched", "feed-forward"],
+            papers: [["Bochmann et al.", "Phys. Rev. Lett. 104, 203601 (2010)", "https://doi.org/10.1103/PhysRevLett.104.203601", "Cavity-based state detection that keeps the atom."], ["Deist et al.", "Phys. Rev. Lett. 129, 203602 (2022)", "https://doi.org/10.1103/PhysRevLett.129.203602", "Mid-circuit cavity measurement in an array, tens of µs."], ["Hu et al.", "Phys. Rev. Lett. 134, 120801 (2025)", "https://doi.org/10.1103/PhysRevLett.134.120801", "Site-selective cavity readout of an atomic register, repeated error correction."], ["Grinkemeyer et al.", "Science 387, 1301 (2025)", "https://doi.org/10.1126/science.adr7075", "99.96 % fiber-cavity readout; error-detected cavity-mediated entanglement."]],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1757,6 +2097,7 @@
                 `<p>Atoms don't last forever. Background-gas collisions knock them out, and a measured ancilla is heated and best thrown away. A conventional machine has to stop, reload everything and start over.</p>
                  <p>This one keeps going. The MOTs keep producing cold atoms, the conveyor keeps delivering clouds of <span class="yb">Yb</span> and <span class="rb">Rb</span> that are parked in storage, and fresh atoms are moved into every hole while the computation continues. Toggle reloading to compare.</p>`,
             chips: ["lost atom → replaced", "used ancillas recycled", "hours, not seconds"],
+            papers: [["Singh et al.", "Phys. Rev. X 12, 011040 (2022)", "https://doi.org/10.1103/PhysRevX.12.011040", "Continuous mode: one species reloaded while the other is held."], ["Chiu et al.", "Nature 646, 1075 (2025)", "https://doi.org/10.1038/s41586-025-09596-6", "300,000 atoms/s reloaded; >3000 qubits kept for over 2 hours."], ["Li et al.", "Science 393, 1213 (2026)", "https://doi.org/10.1126/science.adz9952", "Fast, continuous and coherent reloading of a ¹⁷¹Yb qubit array."]],
             enter() {
                 arrayEnter();
                 clearArray();
@@ -1815,6 +2156,24 @@
                 }));
                 sync();
             }
+        },
+
+        {
+            nav: "Error correction",
+            view: "code",
+            label: "SURFACE CODE · DISTANCE 3",
+            title: "Catch errors before they spread.",
+            text:
+                `<p>All of this is there to run <em>quantum error correction</em>. In the surface code, nine <span class="yb">Yb</span> data qubits share one logical qubit. Eight <span class="rb">Rb</span> ancillas sit on the plaquettes between them and repeatedly check their neighbours: X stabilizers detect Z errors, Z stabilizers detect X errors.</p>
+                 <p>Each round, every ancilla is entangled with its 2 or 4 data neighbours (four layers of CZ gates) and then read out through the cavity. An error flips the neighbouring stabilizers from +1 to −1, the decoder locates it, and a correction is applied, all without ever measuring the data qubits themselves.</p>`,
+            chips: ["9 data + 8 ancillas", "1 logical qubit", "fixes any single error", "repeated every round"],
+            papers: [["Fowler et al.", "Phys. Rev. A 86, 032324 (2012)", "https://doi.org/10.1103/PhysRevA.86.032324", "The standard surface-code reference: ~1 % threshold, resource estimates."], ["Bluvstein et al.", "Nature 626, 58 (2024)", "https://doi.org/10.1038/s41586-023-06927-3", "Logical processor with up to 48 logical qubits on reconfigurable atom arrays."], ["Google Quantum AI", "Nature 638, 920 (2025)", "https://doi.org/10.1038/s41586-024-08449-y", "Distance-7 surface code below threshold, Λ ≈ 2.14."], ["Bluvstein et al.", "Nature 649, 39 (2026)", "https://doi.org/10.1038/s41586-025-09848-5", "Fault-tolerant neutral-atom architecture: surface code below threshold with atom reuse."]],
+            enter() {
+                codeReset();
+                CS.rounds = CS.fixed = 0;
+                AS.status = "";
+                play(codeRound, true);
+            }
         }
     ];
 
@@ -1838,6 +2197,10 @@
         el.title.textContent = s.title;
         el.text.innerHTML = s.text;
         el.chips.innerHTML = s.chips.map(c => `<li>${c}</li>`).join("");
+        el.papers.innerHTML = (s.papers || []).map(([who, ref, url, note]) =>
+            `<li><a href="${url}" target="_blank" rel="noopener">${who}</a> <span class="ref">${ref}</span><br><span class="note">${note}</span></li>`
+        ).join("");
+        el.papersBox.hidden = !(s.papers && s.papers.length);
         el.next.innerHTML = cur === steps.length - 1 ? "Restart &#8635;" : "Next &rarr;";
         el.prev.disabled = cur === 0;
         navButtons.forEach((b, i) => {
@@ -1891,14 +2254,16 @@
             trans.t += dt;
             if (trans.t >= trans.dur) trans = null;
         }
-        if (steps[cur].view === "machine") updateMachine(dt);
-        else updateArray(dt);
-        if (MS.panel === "lattice") latticePhaseInset += 30 * MS.dnu * dt;
+        const v = steps[cur].view;
+        if (v === "machine") updateMachine(dt);
+        else if (v === "array") updateArray(dt);
+        if (MS.panel === "lattice") latticePhaseInset += 0.3 * MS.vel * dt;
         updateSeq(dt);
     }
 
     function drawView(v) {
         if (v === "machine") drawMachineView();
+        else if (v === "code") drawCodeView();
         else drawArrayView();
     }
 
@@ -1926,8 +2291,16 @@
             return;
         }
 
-        /* zoom between machine and glass cell; q = 0 machine, q = 1 array */
         const p = ease(clamp(trans.t / trans.dur, 0, 1));
+
+        /* views other than machine <-> array simply cross-fade */
+        if (trans.from !== "machine" && trans.to !== "machine") {
+            drawLayer(trans.from, 1, 0, 0, 1 - p);
+            drawLayer(trans.to, 1, 0, 0, p);
+            return;
+        }
+
+        /* zoom between machine and octagon; q = 0 machine, q = 1 array */
         const q = trans.from === "machine" ? p : 1 - p;
         const Z = 8, cx = M.zoom.x, cy = M.zoom.y;
         const km = 1 + (Z - 1) * q;
