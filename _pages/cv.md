@@ -172,7 +172,6 @@ redirect_from:
       <li>Yb and Rb continuous loading platform with a micro-lens array for ultra-fast mid-circuit readout</li>
       <li>Designing, assembling and characterizing atom transport for both Rb and Yb</li>
     </ul>
-    <ul class="cv__tags"><li>optical lattices</li><li>atom transport</li><li>Yb · Rb</li></ul>
   </li>
 
   <li class="cv__item cv__item--now">
@@ -199,7 +198,6 @@ redirect_from:
       <li>Setting up free-space optics and cavities</li>
       <li>Automating measurements</li>
     </ul>
-    <ul class="cv__tags"><li>free-space optics</li><li>cavities</li><li>automation</li></ul>
   </li>
 
   <li class="cv__item">
@@ -209,7 +207,6 @@ redirect_from:
     <ul class="cv__points">
       <li>Simulations in Ansys HFSS, design and characterization of the cavity</li>
     </ul>
-    <ul class="cv__tags"><li>microwave</li><li>Ansys HFSS</li><li>superconducting circuits</li></ul>
   </li>
 
   <li class="cv__item">
