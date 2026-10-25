@@ -30,10 +30,37 @@
 
 /* ---------- header ---------- */
 
+/* this stylesheet is only loaded on the playground page:
+   the title moves into the header so it lines up with the animation */
+.page__inner-wrap > header > .page__title { display: none; }
+
 .nap-header {
-    text-align: center;
+    text-align: left;
     margin-bottom: 1.75rem;
 }
+
+.nap .nap-heading {
+    position: relative;
+    margin: 0 0 0.9rem;
+    padding: 0 0 0.35em;
+    border: 0;
+    font-size: 2rem;
+    line-height: 1.2;
+    color: inherit;
+}
+
+.nap .nap-heading::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 3.5rem;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--nap-yb), var(--nap-rb));
+}
+
+html:not([data-theme="dark"]) .nap-header .nap-heading { color: #22262d; }
 
 .nap-eyebrow {
     font-size: 0.7rem;
@@ -42,7 +69,7 @@
     margin: 0 0 0.5rem;
 }
 
-.nap-subtitle {
+.nap .nap-subtitle {
     font-size: 1.1rem;
     margin: 0;
     color: inherit;
@@ -56,9 +83,9 @@ html:not([data-theme="dark"]) .nap-footnote { color: #6b7380; }
 html:not([data-theme="dark"]) .nap-header .nap-intro { color: #4b5361; }
 
 
-.nap-intro {
-    max-width: 46rem;
-    margin: 0.8rem auto 0;
+.nap .nap-intro {
+    max-width: 52rem;
+    margin: 0.8rem 0 0;
     font-size: 0.88rem;
     line-height: 1.55;
     color: var(--nap-dim);
