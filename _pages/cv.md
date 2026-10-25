@@ -22,12 +22,12 @@ redirect_from:
 (function () {
   if (!window.maplibregl) return;
   var stops = [
-    { name: "Bad Dürkheim", what: "School · Abitur", when: "–2020", at: [8.1724, 49.4618] },
+    { name: "Bad Dürkheim", what: "School · Abitur", when: "– 2020", at: [8.1724, 49.4618] },
     { name: "Greifswald", what: "Internship · Leibniz INP", when: "2020", at: [13.3923, 54.0865] },
-    { name: "Karlsruhe", what: "B.Sc. Physics · KIT", when: "2020–24", at: [8.4037, 49.0069] },
+    { name: "Karlsruhe", what: "B.Sc. Physics · KIT", when: "2020 – 2024", at: [8.4037, 49.0069] },
     { name: "Oslo", what: "Erasmus · UiO", when: "2024", at: [10.7522, 59.9139] },
     { name: "Okinawa", what: "Internship · OIST", when: "2024", at: [127.8336, 26.4625] },
-    { name: "Munich", what: "M.Sc. · TUM & LMU, PlanQC", when: "2024–", at: [11.582, 48.1351] }
+    { name: "Munich", what: "M.Sc. · TUM & LMU, PlanQC", when: "2024 – 2027", at: [11.582, 48.1351] }
   ];
   var STYLE = "https://tiles.openfreemap.org/styles/";
   var isDark = function () { return document.documentElement.getAttribute("data-theme") === "dark"; };
