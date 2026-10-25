@@ -305,6 +305,13 @@
 
   li {
     white-space: nowrap;
+
+    /* long entries (e.g. the employer) wrap instead of being clipped */
+    @include breakpoint($large) {
+      white-space: normal;
+      padding-left: 1.75em;
+      text-indent: -1.75em;
+    }
   }
 
   a {

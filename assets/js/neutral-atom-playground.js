@@ -5,7 +5,7 @@
 
    One <canvas>, two "views":
      machine : the vacuum system (octagon -> conveyor -> glass cell)
-     array   : zoom into the glass cell (reservoirs, tweezers, cavity)
+     array   : zoom into the octagon (storage, tweezers, cavity)
    Each step sets up its view and (optionally) a looping sequence.
    ========================================================= */
 
@@ -710,18 +710,28 @@
         rowSp: ["yb", "rb", "yb", "rb"],
         cavY: 500, mirL: 110, mirR: 890,
         det: { x: 948, y: 500 },
-        resY: 108,
-        res: { yb: { x: 300, rx: 140, ry: 22 }, rb: { x: 700, rx: 140, ry: 22 } },
-        resMax: 48,
-        convX: 500
+        resMax: 30
     };
+
+    /* storage tweezers: 5 x 2 sites, up to 3 atoms each.
+       The same pattern exists at the loading zone (moving AOD array)
+       and in one static storage region per species. */
+    const ST = {
+        rows: [50, 70, 90, 110, 130], dx: 10, cap: 3,
+        x: { load: 500, yb: 290, rb: 710 }
+    };
+    const SLOT = [[-3, -2.5], [3, -2.5], [0, 3]];
+
+    function storeSites(x0) {
+        const s = [];
+        for (const y of ST.rows) for (const d of [-1, 1]) s.push([x0 + d * ST.dx, y]);
+        return s;
+    }
 
     const AS = {
         atoms: [], grid: [], tweens: [], fx: [],
-        res: { yb: AG.resMax, rb: AG.resMax },
-        resPts: { yb: [], rb: [] },
-        conv: [],
-        convPhase: 0, feedT: 0, feeding: true,
+        store: { yb: [], rb: [] }, storeA: 1,
+        feeding: true,
         link: [[], []],
         band: -1, ryd: 0, image: 0,
         probe: -1, probeA: 0, cavA: 0.25,
@@ -733,13 +743,13 @@
         lossRate: 0, roRow: 3, firstRo: true
     };
 
-    for (const sp of ["yb", "rb"]) {
-        const R = AG.res[sp];
-        for (let i = 0; i < 40; i++) {
-            const a = rand(0, TAU), r = Math.sqrt(Math.random());
-            AS.resPts[sp].push({ ox: R.rx * 0.92 * r * Math.cos(a), oy: R.ry * 0.8 * r * Math.sin(a), ph: rand(0, TAU) });
-        }
+    function setStore(n) {
+        for (const sp of ["yb", "rb"]) AS.store[sp] = new Array(ST.rows.length * 2).fill(n);
     }
+    setStore(ST.cap);
+
+    function storeCount(sp) { return AS.store[sp].reduce((s, n) => s + n, 0); }
+    function storeFull(sp) { return storeCount(sp) >= AG.resMax * 0.8; }
 
     function siteXY(r, c) { return [AG.x0 + c * AG.dx, AG.y0 + r * AG.dy]; }
 
@@ -767,7 +777,10 @@
         AS.chartOn = false;
         AS.lossRate = 0;
         AS.feeding = true;
-        AS.res.yb = AS.res.rb = AG.resMax;
+        AS.storeA = 1;
+        setStore(ST.cap);
+        resetLoader();
+        LD.status = false;
         AS.det.clicks = 0;
     }
 
@@ -791,12 +804,6 @@
                 if (!AS.grid[r][c]) placeAtom(r, c);
     }
 
-    function randomFill(p) {
-        for (let r = 0; r < AG.rows; r++)
-            for (let c = 0; c < AG.cols; c++)
-                if (Math.random() < p) placeAtom(r, c);
-    }
-
     function countSites() {
         let n = 0;
         for (const row of AS.grid) for (const a of row) if (a) n++;
@@ -811,16 +818,134 @@
         return n;
     }
 
-    function resPoint(sp) {
-        const R = AG.res[sp], pts = AS.resPts[sp];
-        const q = pts[Math.floor(Math.random() * pts.length)];
-        return [R.x + q.ox, AG.resY + q.oy];
+    /* pick a single atom out of the fullest storage site */
+    function takeFromRes(sp) {
+        const s = AS.store[sp];
+        let k = 0;
+        for (let i = 1; i < s.length; i++) if (s[i] > s[k]) k = i;
+        if (!s[k]) return null;
+        s[k]--;
+        const [x, y] = storeSites(ST.x[sp])[k], o = SLOT[s[k]];
+        return [x + o[0], y + o[1]];
     }
 
-    function takeFromRes(sp, strict) {
-        if (AS.res[sp] > 0) AS.res[sp]--;
-        else if (strict) return null;
-        return resPoint(sp);
+    /* ---------- loading cycle: conveyor -> storage tweezers -> storage region ---------- */
+
+    const LD = { sp: "yb", ph: "idle", t: 0, cloud: [], lat: 0, ring: 0, x: ST.x.load, disp: 0, status: false };
+    const LD_DUR = { arrive: 1.6, hold: 0.6, overlap: 0.6, release: 0.7, move: 1.0, handoff: 0.5 };
+    const spName = sp => (sp === "yb" ? "Yb" : "Rb");
+    const LD_MSG = {
+        arrive: sp => `conveyor brings a ${spName(sp)} cloud`,
+        hold: () => "Δν → 0 · the conveyor stops and holds the cloud",
+        overlap: () => "storage tweezers on, overlapping the cloud",
+        release: () => "lattice off · uncaptured atoms fall away",
+        move: sp => `storage array → ${spName(sp)} storage region`,
+        handoff: sp => `${spName(sp)} atoms parked · conveyor free again`
+    };
+
+    function resetLoader() {
+        LD.ph = "idle"; LD.t = 0; LD.cloud = [];
+        LD.lat = 0; LD.ring = 0; LD.x = ST.x.load; LD.disp = 0;
+    }
+
+    function ldPhase(ph) {
+        LD.ph = ph;
+        LD.t = 0;
+        if (LD.status && LD_MSG[ph]) AS.status = LD_MSG[ph](LD.sp);
+    }
+
+    function startBatch() {
+        LD.cloud = [];
+        for (let i = 0; i < 46; i++) {
+            LD.cloud.push({
+                sp: LD.sp, m: "lat", a: 1, ph: rand(0, TAU),
+                tx: ST.x.load + randn() * 8, ty: 7 * Math.round(rand(42, 138) / 7), x: 0, y: -60
+            });
+        }
+        LD.x = ST.x.load;
+        LD.ring = 0;
+        ldPhase("arrive");
+    }
+
+    function captureCloud() {
+        const sites = storeSites(ST.x.load), used = AS.store[LD.sp].slice();
+        for (const q of LD.cloud) {
+            let best = -1, bd = 12;
+            sites.forEach(([sx, sy], i) => {
+                const d = Math.hypot(q.x - sx, q.y - sy);
+                if (d < bd && used[i] < ST.cap) { bd = d; best = i; }
+            });
+            if (best >= 0) { q.m = "cap"; q.site = best; q.k = used[best]++; }
+            else { q.m = "lost"; q.vx = randn() * 15; q.vy = rand(10, 40); }
+        }
+    }
+
+    function handoff() {
+        const s = AS.store[LD.sp];
+        for (const q of LD.cloud) if (q.m === "cap") s[q.site] = Math.min(ST.cap, s[q.site] + 1);
+        LD.cloud = LD.cloud.filter(q => q.m !== "cap");
+    }
+
+    function updateLoader(dt) {
+        LD.t += dt;
+        const p = LD.ph === "idle" ? 0 : clamp(LD.t / LD_DUR[LD.ph], 0, 1);
+        const other = LD.sp === "yb" ? "rb" : "yb";
+
+        switch (LD.ph) {
+            case "idle":
+                LD.lat = Math.max(0, LD.lat - dt * 2);
+                if (AS.feeding && LD.t > 0.3) {
+                    if (storeFull(LD.sp) && !storeFull(other)) LD.sp = other;
+                    if (!storeFull(LD.sp)) startBatch();
+                    else LD.t = 0;
+                }
+                break;
+            case "arrive":              /* Δν ramped up and back down to zero */
+                LD.lat = Math.min(1, LD.lat + dt * 3);
+                LD.disp = (1 - ease(p)) * 170;
+                if (p >= 1) { LD.disp = 0; ldPhase("hold"); }
+                break;
+            case "hold":
+                if (p >= 1) ldPhase("overlap");
+                break;
+            case "overlap":
+                LD.ring = p;
+                if (p >= 1) { captureCloud(); ldPhase("release"); }
+                break;
+            case "release":
+                LD.lat = 1 - p;
+                if (p >= 1) ldPhase("move");
+                break;
+            case "move":
+                LD.x = lerp(ST.x.load, ST.x[LD.sp], ease(p));
+                if (p >= 1) { handoff(); ldPhase("handoff"); }
+                break;
+            case "handoff":
+                LD.ring = 1 - p;
+                if (p >= 1) { LD.x = ST.x.load; LD.sp = other; LD.ph = "idle"; LD.t = 0; }
+                break;
+        }
+
+        const sites = storeSites(LD.x);
+        for (const q of LD.cloud) {
+            if (q.m === "lat") {
+                q.x = q.tx + Math.sin(simTime * 7 + q.ph) * 0.6;
+                q.y = q.ty - LD.disp;
+            } else if (q.m === "cap") {
+                const [sx, sy] = sites[q.site], o = SLOT[q.k], f = Math.min(1, dt * 12);
+                q.x += (sx + o[0] - q.x) * f;
+                q.y += (sy + o[1] - q.y) * f;
+            } else {
+                q.vy += 260 * dt;
+                q.x += q.vx * dt;
+                q.y += q.vy * dt;
+                q.a -= dt * 1.6;
+            }
+        }
+        LD.cloud = LD.cloud.filter(q => q.a > 0);
+
+        if (LD.status && LD.ph === "idle" && storeFull("yb") && storeFull("rb"))
+            AS.status = "both storage regions loaded";
     }
 
     /* ---------- tweens (tweezer moves) ---------- */
@@ -903,47 +1028,20 @@
 
     /* ---------- composite moves ---------- */
 
-    function stochasticLoad() {
-        for (let r = 0; r < AG.rows; r++) {
-            for (let c = 0; c < AG.cols; c++) {
-                const sp = AG.rowSp[r], [x, y] = siteXY(r, c), u = Math.random();
-                if (u < 0.5) {
-                    const p = resPoint(sp), a = makeAtom(sp, p[0], p[1]);
-                    a.r = r; a.c = c; a.a = 0;
-                    AS.grid[r][c] = a;
-                    move(a, [[x, y]], 0.7, { delay: rand(0, 0.8), tweezer: false });
-                } else if (u < 0.78) {
-                    /* two atoms in one tweezer: light-assisted collision ejects both */
-                    const d = rand(0, 0.5);
-                    for (let k = 0; k < 2; k++) {
-                        const p = resPoint(sp), a = makeAtom(sp, p[0], p[1]);
-                        a.a = 0;
-                        move(a, [[x + (k ? 3 : -3), y]], 0.7, {
-                            delay: d, tweezer: false,
-                            onDone(at) {
-                                at.state = "lost";
-                                at.vx = (k ? 1 : -1) * rand(60, 110);
-                                at.vy = rand(-60, 60);
-                                if (k === 0) puff(x, y, "#ffffff");
-                            }
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    function fillRowFromRes(r, dur, strict) {
+    /* single atoms from storage into the empty science sites of row r;
+       failP: chance that a transfer drops the atom */
+    function fillRowFromRes(r, dur, failP) {
         let n = 0;
         for (let c = 0; c < AG.cols; c++) {
             if (AS.grid[r][c]) continue;
-            const sp = AG.rowSp[r], p = takeFromRes(sp, strict);
+            const sp = AG.rowSp[r], p = takeFromRes(sp);
             if (!p) continue;
             const a = makeAtom(sp, p[0], p[1]);
             a.r = r; a.c = c;
             AS.grid[r][c] = a;
             const [x, y] = siteXY(r, c), gx = x - AG.dx / 2;
-            move(a, [[gx, 165], [gx, y], [x, y]], dur);
+            move(a, [[gx, 165], [gx, y], [x, y]], dur,
+                failP ? { onDone(at) { if (Math.random() < failP) lose(at); } } : {});
             n++;
         }
         return n;
@@ -951,7 +1049,7 @@
 
     function refillAll(dur) {
         let n = 0;
-        for (let r = 0; r < AG.rows; r++) n += fillRowFromRes(r, dur, true);
+        for (let r = 0; r < AG.rows; r++) n += fillRowFromRes(r, dur, 0);
         AS.reloaded += n;
         return n;
     }
@@ -1055,33 +1153,8 @@
             }
         }
 
-        /* the conveyor delivers both species; each goes to its own reservoir */
-        if (AS.feeding) {
-            AS.convPhase += 60 * dt;
-            AS.feedT -= dt;
-            if (AS.feedT <= 0) {
-                AS.feedT = 0.2;
-                const inc = { yb: AS.res.yb, rb: AS.res.rb };
-                for (const p of AS.conv) inc[p.sp]++;
-                const sp = inc.yb <= inc.rb ? "yb" : "rb";
-                if (inc[sp] < AG.resMax) AS.conv.push({ sp, m: "down", x: AG.convX + rand(-2, 2), y: -6 });
-            }
-        }
-        AS.conv = AS.conv.filter(p => {
-            if (p.m === "down") {
-                p.y += 60 * dt;
-                if (p.y >= AG.resY) { p.m = "side"; p.ty = AG.resY + rand(-8, 8); }
-                return true;
-            }
-            const R = AG.res[p.sp], dir = p.sp === "yb" ? -1 : 1;
-            p.x += dir * 90 * dt;
-            p.y += (p.ty - p.y) * Math.min(1, dt * 5);
-            if (dir * (p.x - R.x) >= -R.rx * 0.75) {
-                AS.res[p.sp] = Math.min(AG.resMax, AS.res[p.sp] + 1);
-                return false;
-            }
-            return true;
-        });
+        /* the conveyor keeps delivering clouds that get parked in storage */
+        updateLoader(dt);
 
         AS.det.flash = Math.max(0, AS.det.flash - dt * 6);
 
@@ -1164,42 +1237,52 @@
         if (AS.det.clicks) text(`${AS.det.clicks} clicks`, d.x, y + 45, { align: "center", size: 9 });
     }
 
-    function drawReservoirs() {
-        const t = simTime;
+    function drawStorage() {
+        const t = simTime, cx = ST.x.load, bot = 150;
 
-        /* conveyor from the octagon */
-        const cx = AG.convX, fa = AS.feeding ? 1 : 0.35;
-        beam(cx, -10, cx, AG.resY, C.lattice, 9, 0.4 * fa);
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = hexA(C.lattice, 0.45 * fa);
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        const off = AS.convPhase % 7;
-        for (let y = -10 + off; y < AG.resY - 8; y += 7) {
-            ctx.moveTo(cx - 4, y);
-            ctx.lineTo(cx + 4, y);
-        }
-        ctx.stroke();
-        ctx.restore();
-        for (const p of AS.conv) drawAtom(p.x, p.y, p.sp, 1, 0.6);
-
-        for (const sp of ["yb", "rb"]) {
-            const R = AG.res[sp], col = SP[sp];
-            ctx.fillStyle = hexA(col, 0.05);
-            ctx.strokeStyle = hexA(col, 0.22);
-            ctx.setLineDash([4, 4]);
+        /* conveyor from the glass cell: moves, stops, then is switched off */
+        beam(cx, -10, cx, bot, C.lattice, 9, 0.06 + 0.34 * LD.lat);
+        if (LD.lat > 0.01) {
+            ctx.save();
+            ctx.globalCompositeOperation = "lighter";
+            ctx.strokeStyle = hexA(C.lattice, 0.45 * LD.lat);
+            ctx.lineWidth = 1.4;
             ctx.beginPath();
-            ctx.ellipse(R.x, AG.resY, R.rx, R.ry, 0, 0, TAU);
-            ctx.fill();
+            const off = ((-LD.disp % 7) + 7) % 7;
+            for (let y = off - 14; y < bot - 4; y += 7) {
+                if (y < -10) continue;
+                ctx.moveTo(cx - 5, y);
+                ctx.lineTo(cx + 5, y);
+            }
             ctx.stroke();
-            ctx.setLineDash([]);
-            const n = Math.round(clamp(AS.res[sp] / AG.resMax, 0, 1) * AS.resPts[sp].length);
-            for (let i = 0; i < n; i++) {
-                const q = AS.resPts[sp][i];
-                drawAtom(R.x + q.ox + Math.sin(t * 2 + q.ph) * 2, AG.resY + q.oy + Math.cos(t * 1.7 + q.ph) * 1.5, sp, 0.85, 0.55);
+            ctx.restore();
+        }
+
+        /* static storage tweezers, one region per species */
+        ctx.lineWidth = 1;
+        for (const sp of ["yb", "rb"]) {
+            storeSites(ST.x[sp]).forEach(([x, y], i) => {
+                ctx.strokeStyle = hexA(C.tweezer, 0.18);
+                ring(x, y, 7);
+                for (let k = 0; k < AS.store[sp][i]; k++) {
+                    const o = SLOT[k];
+                    drawAtom(x + o[0] + Math.sin(t * 3 + i + 2 * k) * 0.5, y + o[1] + Math.cos(t * 2.6 + i + k) * 0.5,
+                        sp, 0.9 * AS.storeA, 0.5);
+                }
+            });
+        }
+
+        /* moving storage array (AOD), at the loading zone or in transit */
+        if (LD.ring > 0.01) {
+            for (const [x, y] of storeSites(LD.x)) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(x, y, 14, C.tweezer, 0.35 * LD.ring);
+                ctx.globalCompositeOperation = "source-over";
+                ctx.strokeStyle = hexA(C.tweezer, 0.8 * LD.ring);
+                ring(x, y, 7);
             }
         }
+        for (const q of LD.cloud) drawAtom(q.x, q.y, q.sp, clamp(q.a, 0, 1), 0.5);
     }
 
     function drawSites() {
@@ -1379,9 +1462,10 @@
     }
 
     function drawArrayLabels() {
-        text("conveyor from the glass cell", AG.convX + 14, 58);
-        text("Yb reservoir", AG.res.yb.x, AG.resY + 38, { align: "center" });
-        text("Rb reservoir", AG.res.rb.x, AG.resY + 38, { align: "center" });
+        text("conveyor from the glass cell", ST.x.load + 16, 14);
+        text("loading zone", ST.x.load, 154, { align: "center" });
+        text("Yb storage", ST.x.yb, 154, { align: "center" });
+        text("Rb storage", ST.x.rb, 154, { align: "center" });
 
         for (let r = 0; r < AG.rows; r++) {
             const sp = AG.rowSp[r];
@@ -1405,7 +1489,7 @@
     }
 
     function drawArrayView() {
-        drawReservoirs();
+        drawStorage();
         drawCavity();
         drawSites();
         drawBand();
@@ -1479,7 +1563,7 @@
             text:
                 `<p>The glass cell is a noisy place: hot atoms from the ovens, background gas, scattered MOT light. The qubits need somewhere quieter, so the cold <span class="yb">Yb</span> and <span class="rb">Rb</span> atoms are carried up into the octagon.</p>
                  <p>The vehicle is a <em>moving optical lattice</em>. Two counter-propagating beams form a standing wave with a trap every λ/2. Shift one beam by Δν and the pattern slides along at <em>v&nbsp;=&nbsp;λΔν/2</em>, carrying the atoms with it.</p>
-                 <p>Speed is free; acceleration costs trap depth, so Δν is ramped smoothly.</p>`,
+                 <p>Speed is free; acceleration costs trap depth, so Δν is ramped smoothly, and back down to zero to stop the belt in the octagon.</p>`,
             chips: ["glass cell → octagon", "both species", "v = λΔν/2"],
             enter() {
                 MS.panel = "lattice";
@@ -1512,69 +1596,74 @@
         },
 
         {
-            nav: "Loading",
+            nav: "Storage",
             view: "array",
-            label: "OCTAGON · TWEEZER LOADING",
-            title: "One atom per tweezer.",
+            label: "OCTAGON · STORAGE",
+            title: "Stop, catch, park.",
             text:
-                `<p>Now we zoom into the octagon. The conveyor keeps delivering atoms, and each species is collected in its own reservoir: <span class="yb">Yb</span> on one side, <span class="rb">Rb</span> on the other. Below them sits an array of <em>optical tweezers</em>: tightly focused laser beams, each a trap about a micrometre across.</p>
-                 <p>Loading is a coin toss. When two atoms land in the same tweezer, light-assisted collisions kick both out. Each site ends up with exactly zero or one atom, about half the time. A fluorescence image tells us which.</p>`,
-            chips: ["~50 % per site", "0 or 1 atom, never 2", "fluorescence imaging"],
+                `<p>Now we zoom into the octagon. Here the conveyor belt stops: Δν is ramped to zero and the lattice holds a cloud of cold atoms in place. A <em>storage tweezer array</em> is switched on right on top of the cloud, and then the lattice is switched off. Atoms sitting in a storage tweezer stay put, the rest fall away.</p>
+                 <p>The storage array, now holding a few atoms per site, is moved over into the storage region. The conveyor is free again and brings the next cloud. Batches alternate between <span class="yb">Yb</span> and <span class="rb">Rb</span>, each parked on its own side.</p>`,
+            chips: ["conveyor stops · Δν → 0", "storage tweezers overlap the cloud", "lattice off → move to storage"],
             enter() {
                 arrayEnter();
                 clearArray();
+                setStore(0);
+                LD.status = true;
                 play(() => [
-                    { dur: 0.5, start() { clearArray(); AS.status = "tweezers on"; } },
-                    { dur: 2.0, start() { AS.status = "loading from the reservoirs"; stochasticLoad(); } },
-                    {
-                        dur: 1.8,
-                        start() { AS.status = `fluorescence image · ${countSites()}/40 filled`; },
-                        update(p) { AS.image = Math.min(1, p * 4); }
-                    },
-                    { dur: 1.0, update(p) { AS.image = 1 - p; } },
-                    { dur: 1.2 }
+                    { dur: 0.05, start() { setStore(0); AS.storeA = 1; resetLoader(); AS.feeding = true; } },
+                    { dur: 11 },
+                    { dur: 1.6, start() { AS.feeding = false; } },
+                    { dur: 0.6, update(p) { AS.storeA = 1 - p; } }
                 ], true);
             }
         },
 
         {
-            nav: "Sorting",
+            nav: "Picking",
             view: "array",
-            label: "REARRANGEMENT",
-            title: "Build a perfect array.",
+            label: "SINGLE-ATOM PICK-UP",
+            title: "One atom per tweezer.",
             text:
-                `<p>A random pattern isn't useful. The static tweezer array is shaped by a <em>spatial light modulator</em> (SLM), which turns one laser beam into a whole pattern of traps. On top of that, moving tweezers steered by <em>acousto-optic deflectors</em> (AODs) pick atoms out of the reservoirs and drop them into the holes. Many atoms move at once, one row at a time.</p>
-                 <p>The random pattern becomes a defect-free register: rows of <span class="yb">Yb</span> data qubits interleaved with <span class="rb">Rb</span> ancillas.</p>`,
-            chips: ["SLM · static array", "AOD · moving tweezers", "defect-free 40/40"],
+                `<p>Below the storage sits the <em>science array</em>: a static pattern of optical tweezers, each a trap about a micrometre across, shaped by a <em>spatial light modulator</em> (SLM). Moving tweezers steered by <em>acousto-optic deflectors</em> (AODs) pull single atoms out of the storage sites and drop them into the science tweezers. Many atoms move at once, one row at a time.</p>
+                 <p>Not every transfer works. A fluorescence image shows the holes, and a second pass fills them. The result is a defect-free register: rows of <span class="yb">Yb</span> data qubits interleaved with <span class="rb">Rb</span> ancillas. Meanwhile the conveyor keeps topping up the storage.</p>`,
+            chips: ["single-atom pick-up", "AOD · moving tweezers", "SLM · science array", "defect-free 40/40"],
             enter() {
                 arrayEnter();
                 clearArray();
-                randomFill(0.5);
                 play(() => {
-                    const acts = [{
-                        dur: 1.0,
-                        start() { AS.status = `image · ${countSites()}/40 · find the holes`; },
-                        update(p) { AS.image = p < 0.5 ? p * 2 : 2 - 2 * p; }
-                    }];
+                    const acts = [];
                     for (let r = 0; r < AG.rows; r++) {
                         acts.push({
                             dur: 1.25,
                             start() {
-                                const n = fillRowFromRes(r, 1.1, false);
-                                AS.status = n ? `row ${r + 1}: ${n} atom${n > 1 ? "s" : ""} in parallel` : `row ${r + 1}: already full`;
+                                const n = fillRowFromRes(r, 1.1, 0.12);
+                                AS.status = `row ${r + 1}: ${n} atom${n === 1 ? "" : "s"} picked in parallel`;
                             }
                         });
                     }
                     acts.push({
+                        dur: 1.2,
+                        start() { AS.status = `fluorescence image · ${countSites()}/40 · find the holes`; },
+                        update(p) { AS.image = p < 0.5 ? p * 2 : 2 - 2 * p; }
+                    });
+                    acts.push({
+                        dur: 1.25,
+                        start() {
+                            let n = 0;
+                            for (let r = 0; r < AG.rows; r++) n += fillRowFromRes(r, 1.1, 0);
+                            AS.status = n ? `filling ${n} hole${n === 1 ? "" : "s"}` : "no holes";
+                        }
+                    });
+                    acts.push({
                         dur: 1.0,
-                        start() { AS.status = "defect-free · 40/40"; },
+                        start() { AS.status = `defect-free · ${countSites()}/40`; },
                         update(p) { AS.image = p < 0.5 ? p * 2 : 2 - 2 * p; }
                     });
                     acts.push({ dur: 1.6 });
                     acts.push({
                         dur: 0.6,
                         start() { AS.status = "reset and repeat"; for (const a of AS.atoms) a.state = "fade"; },
-                        end() { clearArray(); randomFill(0.5); }
+                        end() { clearArray(); }
                     });
                     return acts;
                 }, true);
@@ -1666,7 +1755,7 @@
             title: "Never stop.",
             text:
                 `<p>Atoms don't last forever. Background-gas collisions knock them out, and a measured ancilla is heated and best thrown away. A conventional machine has to stop, reload everything and start over.</p>
-                 <p>This one keeps going. The MOTs keep producing cold atoms, the conveyor keeps delivering <span class="yb">Yb</span> and <span class="rb">Rb</span> into the reservoirs, and fresh atoms are moved into every hole while the computation continues. Toggle reloading to compare.</p>`,
+                 <p>This one keeps going. The MOTs keep producing cold atoms, the conveyor keeps delivering clouds of <span class="yb">Yb</span> and <span class="rb">Rb</span> that are parked in storage, and fresh atoms are moved into every hole while the computation continues. Toggle reloading to compare.</p>`,
             chips: ["lost atom → replaced", "used ancillas recycled", "hours, not seconds"],
             enter() {
                 arrayEnter();
@@ -1704,7 +1793,7 @@
                             dur: 1.2,
                             start() {
                                 const n = refillAll(1.1);
-                                AS.status = n ? `reloading ${n} atom${n > 1 ? "s" : ""} from the reservoirs` : "array full";
+                                AS.status = n ? `reloading ${n} atom${n > 1 ? "s" : ""} from storage` : "array full";
                             }
                         });
                     }
