@@ -35,6 +35,71 @@
       {% endif %}
       {% if author.email %}
         <li><a href="mailto:{{ author.email }}"><i class="fas fa-fw fa-envelope icon-pad-right" aria-hidden="true"></i>{{ site.data.ui-text[site.locale].email_label | default: "Email" }}</a></li>
+      {% elsif author.email_obf %}
+        <li><a href="#" class="js-email" data-e="{{ author.email_obf }}"><i class="fas fa-fw fa-envelope icon-pad-right" aria-hidden="true"></i>{{ site.data.ui-text[site.locale].email_label | default: "Email" }}</a></li>
+        <script>
+        /* the address is only decoded after a small human check */
+        (function () {
+          var link = document.currentScript.previousElementSibling.querySelector(".js-email");
+          if (!link) return;
+          var dlg = null, a = 0, b = 0;
+
+          function decode() { return atob(link.getAttribute("data-e")).split("").reverse().join(""); }
+
+          function build() {
+            dlg = document.createElement("dialog");
+            dlg.className = "email-check";
+            dlg.innerHTML =
+              '<form method="dialog" class="email-check__form">' +
+              '<p class="email-check__title">Quick human check</p>' +
+              '<label class="email-check__q" for="email-check-in"></label>' +
+              '<div class="email-check__row"><input id="email-check-in" inputmode="numeric" autocomplete="off">' +
+              '<button type="submit" value="check">Show email</button></div>' +
+              '<p class="email-check__msg" aria-live="polite"></p>' +
+              '<button type="button" class="email-check__close" aria-label="Close">&times;</button>' +
+              '</form>';
+            document.body.appendChild(dlg);
+            var form = dlg.querySelector("form"), input = dlg.querySelector("input"), msg = dlg.querySelector(".email-check__msg");
+            dlg.querySelector(".email-check__close").addEventListener("click", function () { dlg.close(); });
+            dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });
+            form.addEventListener("submit", function (e) {
+              e.preventDefault();
+              if (parseInt(input.value, 10) !== a + b) {
+                msg.textContent = "Not quite, try again.";
+                ask();
+                return;
+              }
+              var addr = decode();
+              form.innerHTML =
+                '<p class="email-check__title">Thanks!</p>' +
+                '<p><a class="email-check__addr" href="mailto:' + addr + '">' + addr + '</a></p>' +
+                '<div class="email-check__row"><button type="button" class="js-copy">Copy</button>' +
+                '<button type="button" class="js-done">Close</button></div>';
+              form.querySelector(".js-done").addEventListener("click", function () { dlg.close(); });
+              form.querySelector(".js-copy").addEventListener("click", function (ev) {
+                if (navigator.clipboard) navigator.clipboard.writeText(addr).then(function () { ev.target.textContent = "Copied"; });
+              });
+            });
+          }
+
+          function ask() {
+            a = 2 + Math.floor(Math.random() * 8);
+            b = 2 + Math.floor(Math.random() * 8);
+            dlg.querySelector(".email-check__q").textContent = "What is " + a + " + " + b + "?";
+            var input = dlg.querySelector("input");
+            input.value = "";
+            input.focus();
+          }
+
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (!dlg) build();
+            if (dlg.querySelector("input")) ask();
+            if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+            if (dlg.querySelector("input")) dlg.querySelector("input").focus();
+          });
+        })();
+        </script>
       {% endif %}
 
       <!-- Font Awesome and Academicons icons / Academic websites -->

@@ -5,7 +5,7 @@ permalink: /neutral-atom-playground/
 author_profile: false
 ---
 
-<link rel="stylesheet" href="{{ '/assets/css/neutral-atom-playground.css' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/neutral-atom-playground.css' | relative_url }}?v={{ site.time | date: '%s' }}">
 
 <div class="nap" id="nap">
 
@@ -48,4 +48,4 @@ author_profile: false
 
 </div>
 
-<script src="{{ '/assets/js/neutral-atom-playground.js' | relative_url }}"></script>
+<script src="{{ '/assets/js/neutral-atom-playground.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>

@@ -31,7 +31,8 @@ author:
   employer         : "Technical University of Munich & Ludwig Maximilians University Munich"
   uri              : "https://www.zeiher-lab.de/"
   uri_label        : "Zeiher Lab"
-  email            : "markus.fuhrmann@physik.uni-muenchen.de" 
+  email            : # shown only after a human check, see email_obf
+  email_obf        : "ZWQubmVoY25ldW0taW51Lmtpc3locEBubmFtcmh1Zi5zdWtyYW0=" # base64 of the reversed address
 
   # Academic websites
   academia         : # URL
