@@ -7,8 +7,8 @@ redirect_from:
   - /resume
 ---
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
 
 <div class="cv">
 
@@ -20,78 +20,143 @@ redirect_from:
 
 <script>
 (function () {
-  if (!window.L) return;
+  if (!window.maplibregl) return;
   var stops = [
-    { name: "Bad Dürkheim", what: "School · Abitur", when: "–2020", at: [49.4618, 8.1724] },
-    { name: "Greifswald", what: "Internship · Leibniz INP", when: "2020", at: [54.0865, 13.3923] },
-    { name: "Karlsruhe", what: "B.Sc. Physics · KIT", when: "2020–24", at: [49.0069, 8.4037] },
-    { name: "Oslo", what: "Erasmus · UiO", when: "2024", at: [59.9139, 10.7522] },
-    { name: "Okinawa", what: "Internship · OIST", when: "2024", at: [26.4625, 127.8336] },
-    { name: "Munich", what: "M.Sc. · TUM & LMU, PlanQC", when: "2024–", at: [48.1351, 11.582] }
+    { name: "Bad Dürkheim", what: "School · Abitur", when: "–2020", at: [8.1724, 49.4618] },
+    { name: "Greifswald", what: "Internship · Leibniz INP", when: "2020", at: [13.3923, 54.0865] },
+    { name: "Karlsruhe", what: "B.Sc. Physics · KIT", when: "2020–24", at: [8.4037, 49.0069] },
+    { name: "Oslo", what: "Erasmus · UiO", when: "2024", at: [10.7522, 59.9139] },
+    { name: "Okinawa", what: "Internship · OIST", when: "2024", at: [127.8336, 26.4625] },
+    { name: "Munich", what: "M.Sc. · TUM & LMU, PlanQC", when: "2024–", at: [11.582, 48.1351] }
   ];
-
-  var map = L.map("cv-map", { scrollWheelZoom: false, worldCopyJump: true, zoomSnap: 0.25 });
-  var tiles = null;
-  function setTiles() {
-    var dark = document.documentElement.getAttribute("data-theme") === "dark";
-    if (tiles) map.removeLayer(tiles);
-    tiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd", maxZoom: 12
-    }).addTo(map);
-  }
-  setTiles();
-  new MutationObserver(setTiles).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  var STYLE = "https://tiles.openfreemap.org/styles/";
+  var isDark = function () { return document.documentElement.getAttribute("data-theme") === "dark"; };
+  var accent = function () {
+    return getComputedStyle(document.documentElement).getPropertyValue("--accent-1").trim() || "#6d4fd8";
+  };
 
   /* curved leg between two stops: quadratic Bezier with a sideways bulge */
   function arc(a, b) {
     var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
     var dx = b[0] - a[0], dy = b[1] - a[1];
-    var c = [mx - dy * 0.22, my + dx * 0.22], pts = [];
-    for (var i = 0; i <= 40; i++) {
-      var t = i / 40, u = 1 - t;
+    var c = [mx + dy * 0.22, my - dx * 0.22], pts = [];
+    for (var i = 0; i <= 48; i++) {
+      var t = i / 48, u = 1 - t;
       pts.push([u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]]);
     }
     return pts;
   }
-
-  var legs = [];
+  var legs = { type: "FeatureCollection", features: [] };
   for (var i = 1; i < stops.length; i++) {
-    legs.push(L.polyline(arc(stops[i - 1].at, stops[i].at), { className: "cv-map__leg", weight: 2.5 }).addTo(map));
+    legs.features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: arc(stops[i - 1].at, stops[i].at) } });
   }
 
-  /* arrowheads: an SVG marker on every leg */
-  var svg = map.getPanes().overlayPane.querySelector("svg");
-  if (svg) {
-    var ns = "http://www.w3.org/2000/svg";
-    var defs = document.createElementNS(ns, "defs");
-    defs.innerHTML = '<marker id="cv-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="cv-map__head"/></marker>';
-    svg.insertBefore(defs, svg.firstChild);
-    legs.forEach(function (l) { l.getElement().setAttribute("marker-end", "url(#cv-arrow)"); });
+  var bounds = new maplibregl.LngLatBounds();
+  stops.forEach(function (s) { bounds.extend(s.at); });
+
+  var map = new maplibregl.Map({
+    container: "cv-map",
+    style: STYLE + (isDark() ? "dark" : "positron"),
+    bounds: bounds,
+    fitBoundsOptions: { padding: 40 },
+    scrollZoom: false,
+    dragRotate: false,
+    pitchWithRotate: false,
+    attributionControl: { compact: true }
+  });
+  map.touchZoomRotate.disableRotation();
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+
+  /* arrowhead image, drawn once per style load */
+  function arrowImage(color) {
+    var n = 32, c = document.createElement("canvas");
+    c.width = c.height = n;
+    var g = c.getContext("2d");
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(6, 6); g.lineTo(28, 16); g.lineTo(6, 26); g.lineTo(11, 16);
+    g.closePath();
+    g.fill();
+    return g.getImageData(0, 0, n, n);
   }
 
+  function addRoute() {
+    var col = accent();
+    if (map.hasImage("cv-arrow")) map.removeImage("cv-arrow");
+    map.addImage("cv-arrow", arrowImage(col), { pixelRatio: 2 });
+    map.addSource("cv-legs", { type: "geojson", data: legs });
+    map.addLayer({
+      id: "cv-legs-glow", type: "line", source: "cv-legs",
+      layout: { "line-cap": "round" },
+      paint: { "line-color": col, "line-width": 7, "line-opacity": 0.15 }
+    });
+    map.addLayer({
+      id: "cv-legs", type: "line", source: "cv-legs",
+      layout: { "line-cap": "butt" },
+      paint: { "line-color": col, "line-width": 2.5, "line-dasharray": [2, 1.6] }
+    });
+    map.addLayer({
+      id: "cv-arrows", type: "symbol", source: "cv-legs",
+      layout: {
+        "symbol-placement": "line-center",
+        "icon-image": "cv-arrow",
+        "icon-size": 1,
+        "icon-rotation-alignment": "map",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    });
+  }
+  map.on("style.load", addRoute);
+
+  /* marching dashes */
+  var dashes = [[0, 2, 1.6], [0.4, 2, 1.2], [0.8, 2, 0.8], [1.2, 2, 0.4], [1.6, 2, 0], [0, 0.4, 1.6, 1.6], [0, 0.8, 1.6, 1.2], [0, 1.2, 1.6, 0.8], [0, 1.6, 1.6, 0.4]];
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce) {
+    var step = -1;
+    setInterval(function () {
+      if (!map.getLayer("cv-legs")) return;
+      step = (step + 1) % dashes.length;
+      map.setPaintProperty("cv-legs", "line-dasharray", dashes[step]);
+    }, 90);
+  }
+
+  /* numbered pins and the clickable list */
   var list = document.getElementById("cv-stops");
   stops.forEach(function (s, i) {
-    var icon = L.divIcon({ className: "cv-map__pin", html: "<span>" + (i + 1) + "</span>", iconSize: [24, 24] });
-    L.marker(s.at, { icon: icon, title: s.name }).addTo(map)
-      .bindTooltip("<b>" + s.name + "</b><br>" + s.what + " · " + s.when, { direction: "top", offset: [0, -12] });
+    var el = document.createElement("div");
+    el.className = "cv-map__pin";
+    el.innerHTML = "<span>" + (i + 1) + "</span>";
+    var popup = new maplibregl.Popup({ offset: 16, closeButton: false, className: "cv-map__popup" })
+      .setHTML("<b>" + s.name + "</b><br>" + s.what + " · " + s.when);
+    var marker = new maplibregl.Marker({ element: el }).setLngLat(s.at).setPopup(popup).addTo(map);
+    el.addEventListener("mouseenter", function () { if (!popup.isOpen()) marker.togglePopup(); });
+    el.addEventListener("mouseleave", function () { if (popup.isOpen()) marker.togglePopup(); });
+
     var li = document.createElement("li");
     li.innerHTML = '<button type="button"><span class="n">' + (i + 1) + '</span><span><b>' + s.name + "</b> " + s.when + "<br><small>" + s.what + "</small></span></button>";
-    li.querySelector("button").addEventListener("click", function () { map.flyTo(s.at, 7, { duration: 1.2 }); });
+    li.querySelector("button").addEventListener("click", function () { map.flyTo({ center: s.at, zoom: 6, duration: 1400 }); });
     list.appendChild(li);
   });
 
-  var all = L.latLngBounds(stops.map(function (s) { return s.at; }));
-  map.fitBounds(all, { padding: [30, 30] });
-  var reset = L.control({ position: "topright" });
-  reset.onAdd = function () {
-    var b = L.DomUtil.create("button", "cv-map__reset");
-    b.type = "button";
-    b.textContent = "show all";
-    L.DomEvent.on(b, "click", function (e) { L.DomEvent.stop(e); map.flyToBounds(all, { padding: [30, 30], duration: 1.2 }); });
-    return b;
-  };
-  reset.addTo(map);
+  /* "show all" button */
+  map.addControl({
+    onAdd: function () {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "cv-map__reset maplibregl-ctrl";
+      b.textContent = "show all";
+      b.addEventListener("click", function () { map.fitBounds(bounds, { padding: 40, duration: 1400 }); });
+      this._b = b;
+      return b;
+    },
+    onRemove: function () { this._b.remove(); }
+  }, "top-right");
+
+  /* follow the site's light / dark toggle */
+  new MutationObserver(function () {
+    map.setStyle(STYLE + (isDark() ? "dark" : "positron"));
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 })();
 </script>
 
