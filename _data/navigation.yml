@@ -17,8 +17,5 @@ main:
   # - title: "CV"
   #   url: /cv-json/
     
-  - title: "Guide"
-    url: /markdown/
-  
   - title: "Neutral Atom Playground"
     url: /neutral-atom-playground/
