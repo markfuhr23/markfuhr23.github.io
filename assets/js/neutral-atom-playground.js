@@ -1844,6 +1844,440 @@
 
 
     /* =========================================================
+       CIRCUIT VIEW  (4-qubit GHZ, compiled to H + CZ, with a
+       small state-vector simulator so the amplitudes are real)
+       ========================================================= */
+
+    const CQ = {
+        n: 4, wx0: 70, wx1: 900, wy0: 82, dy: 52, cx0: 190, cdx: 92,
+        ay: 470, ax0: 120, adx: 95, bx0: 540, bx1: 960, by: 492, bh: 70
+    };
+    /* CNOT(c, t) = H(t) · CZ(c, t) · H(t); neighbouring H gates share a column */
+    const CIRC = [
+        [["H", 0], ["H", 1]],
+        [["CZ", 0, 1]],
+        [["H", 1], ["H", 2]],
+        [["CZ", 1, 2]],
+        [["H", 2], ["H", 3]],
+        [["CZ", 2, 3]],
+        [["H", 3]],
+        [["M"]]
+    ];
+    const colX = k => CQ.cx0 + k * CQ.cdx;
+    const bitsOf = i => i.toString(2).padStart(4, "0");      /* q0 is the leftmost bit */
+
+    const CV = {
+        v: new Float64Array(16), disp: new Float64Array(16),
+        col: -1, head: CQ.cx0 - 60,
+        pulse: [0, 0, 0, 0], off: [0, 0, 0, 0], carried: [false, false, false, false],
+        cz: null, czA: 0, result: null, measA: 0,
+        shots: 0, ghz0: 0, ghz1: 0, other: 0
+    };
+
+    function circuitReset() {
+        CV.v.fill(0);
+        CV.v[0] = 1;
+        CV.col = -1;
+        CV.head = CQ.cx0 - 60;
+        CV.pulse.fill(0);
+        CV.off.fill(0);
+        CV.carried.fill(false);
+        CV.cz = null;
+        CV.czA = 0;
+        CV.result = null;
+        CV.measA = 0;
+    }
+
+    function applyH(k) {
+        const m = 1 << (3 - k), r = Math.SQRT1_2;
+        for (let i = 0; i < 16; i++) {
+            if (i & m) continue;
+            const a = CV.v[i], b = CV.v[i | m];
+            CV.v[i] = (a + b) * r;
+            CV.v[i | m] = (a - b) * r;
+        }
+    }
+
+    function applyCZ(c, t) {
+        const m = (1 << (3 - c)) | (1 << (3 - t));
+        for (let i = 0; i < 16; i++) if ((i & m) === m) CV.v[i] = -CV.v[i];
+    }
+
+    function measureState() {
+        let u = Math.random(), i = 0;
+        for (; i < 15; i++) { u -= CV.v[i] * CV.v[i]; if (u <= 0) break; }
+        CV.result = bitsOf(i);
+        CV.shots++;
+        if (i === 0) CV.ghz0++;
+        else if (i === 15) CV.ghz1++;
+        else CV.other++;
+        CV.v.fill(0);
+        CV.v[i] = 1;
+    }
+
+    function circuitRound() {
+        const acts = [{ dur: 0.6, start() { circuitReset(); AS.status = "start in |0000⟩"; } }];
+        CIRC.forEach((col, k) => {
+            acts.push({
+                dur: 0.35,
+                start() { CV.col = k; this.h0 = CV.head; },
+                update(p) { CV.head = lerp(this.h0, colX(k), ease(p)); }
+            });
+            const g = col[0][0];
+            if (g === "H") {
+                const qs = col.map(x => x[1]);
+                acts.push({
+                    dur: 0.7,
+                    start() { AS.status = `single-qubit gates · H on ${qs.map(q => "q" + q).join(", ")}`; },
+                    update(p) { for (const q of qs) CV.pulse[q] = Math.sin(Math.PI * p); },
+                    end() { for (const q of qs) { CV.pulse[q] = 0; applyH(q); } }
+                });
+            } else if (g === "CZ") {
+                const [, c, t] = col[0], d = CQ.adx - 34;
+                acts.push({
+                    dur: 0.6,
+                    start() { AS.status = `tweezer brings q${t} next to q${c}`; CV.carried[t] = true; },
+                    update(p) { CV.off[t] = -d * ease(p); }
+                });
+                acts.push({
+                    dur: 0.7,
+                    start() { CV.cz = [c, t]; AS.status = `Rydberg pulse · CZ on q${c}, q${t}`; },
+                    update(p) { CV.czA = Math.sin(Math.PI * p); },
+                    end() { CV.czA = 0; CV.cz = null; applyCZ(c, t); }
+                });
+                acts.push({
+                    dur: 0.6,
+                    start() { AS.status = `q${t} back to its site`; },
+                    update(p) { CV.off[t] = -d * (1 - ease(p)); },
+                    end() { CV.carried[t] = false; }
+                });
+            } else {
+                acts.push({
+                    dur: 1.0,
+                    start() { measureState(); AS.status = `measure all · result ${CV.result}`; },
+                    update(p) { CV.measA = Math.min(1, p * 3); }
+                });
+                acts.push({ dur: 1.6 });
+            }
+        });
+        return acts;
+    }
+
+    function updateCircuit(dt) {
+        const f = Math.min(1, dt * 8);
+        for (let i = 0; i < 16; i++) CV.disp[i] += (CV.v[i] - CV.disp[i]) * f;
+    }
+
+    function drawCircuitView() {
+        const done = k => k < CV.col, now = k => k === CV.col;
+
+        /* wires */
+        for (let q = 0; q < 4; q++) {
+            const y = CQ.wy0 + q * CQ.dy;
+            ctx.strokeStyle = hexA(C.text, 0.25);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(CQ.wx0 + 46, y);
+            ctx.lineTo(CQ.wx1, y);
+            ctx.stroke();
+            text(`q${q} |0⟩`, CQ.wx0, y, { color: C.text, size: 11 });
+        }
+
+        /* gates */
+        CIRC.forEach((col, k) => {
+            const x = colX(k), a = now(k) ? 1 : done(k) ? 0.75 : 0.4;
+            const stroke = now(k) ? C.accent : C.yb;
+            for (const g of col) {
+                if (g[0] === "H") {
+                    const y = CQ.wy0 + g[1] * CQ.dy;
+                    ctx.fillStyle = "#121722";
+                    ctx.strokeStyle = hexA(stroke, a);
+                    ctx.lineWidth = 1.4;
+                    rr(x - 14, y - 14, 28, 28, 5);
+                    ctx.fill();
+                    ctx.stroke();
+                    text("H", x, y + 1, { align: "center", size: 12, weight: 700, color: hexA(stroke, a) });
+                } else if (g[0] === "CZ") {
+                    const y1 = CQ.wy0 + g[1] * CQ.dy, y2 = CQ.wy0 + g[2] * CQ.dy;
+                    ctx.strokeStyle = hexA(now(k) ? C.accent : C.rydberg, a);
+                    ctx.fillStyle = hexA(now(k) ? C.accent : C.rydberg, a);
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.moveTo(x, y1);
+                    ctx.lineTo(x, y2);
+                    ctx.stroke();
+                    circle(x, y1, 5);
+                    circle(x, y2, 5);
+                } else {
+                    for (let q = 0; q < 4; q++) {
+                        const y = CQ.wy0 + q * CQ.dy;
+                        ctx.fillStyle = "#121722";
+                        ctx.strokeStyle = hexA(stroke, a);
+                        ctx.lineWidth = 1.4;
+                        rr(x - 14, y - 14, 28, 28, 5);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(x, y + 6, 9, Math.PI * 1.15, Math.PI * 1.85);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x, y + 6);
+                        ctx.lineTo(x + 6, y - 6);
+                        ctx.stroke();
+                    }
+                }
+            }
+        });
+
+        /* CNOT brackets: each H · CZ · H group */
+        if (!compact) {
+            for (let k = 0; k < 3; k++) {
+                const x1 = colX(2 * k) - 18, x2 = colX(2 * k + 2) + 18, y = CQ.wy0 + 3 * CQ.dy + 34;
+                ctx.strokeStyle = hexA(C.dim, 0.5);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x1, y - 5); ctx.lineTo(x1, y); ctx.lineTo(x2, y); ctx.lineTo(x2, y - 5);
+                ctx.stroke();
+                text(`CNOT q${k}→q${k + 1} = H · CZ · H`, (x1 + x2) / 2, y + 14, { align: "center", size: 9 });
+            }
+        }
+
+        /* playhead */
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = hexA(C.accent, 0.7);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(CV.head, CQ.wy0 - 30);
+        ctx.lineTo(CV.head, CQ.wy0 + 3 * CQ.dy + 22);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        /* the atoms executing it */
+        text("THE ATOMS", CQ.ax0 - 30, CQ.ay - 74, { size: 9 });
+        const pos = q => [CQ.ax0 + q * CQ.adx + CV.off[q], CQ.ay];
+        if (CV.cz && CV.czA > 0.01) {
+            const [c, t] = CV.cz, [x1, y1] = pos(c), [x2] = pos(t);
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = hexA(C.rydberg, 0.7 * CV.czA);
+            ctx.lineWidth = 1.2;
+            ring((x1 + x2) / 2, y1, 30 + 6 * CV.czA);
+            ctx.setLineDash([]);
+            beam(CQ.ax0 - 50, CQ.ay, CQ.ax0 + 3 * CQ.adx + 50, CQ.ay, C.rydberg, 6, 0.3 * CV.czA);
+        }
+        for (let q = 0; q < 4; q++) {
+            const [x, y] = pos(q);
+            ctx.strokeStyle = hexA(C.tweezer, 0.16);
+            ctx.lineWidth = 1;
+            ring(CQ.ax0 + q * CQ.adx, y, 11);
+            if (CV.pulse[q] > 0.01) beam(x, y - 70, x, y, "#c4b5fd", 7, 0.9 * CV.pulse[q]);
+            if (CV.carried[q]) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(x, y, 22, C.tweezer, 0.5);
+                ctx.globalCompositeOperation = "source-over";
+                ctx.strokeStyle = hexA(C.tweezer, 0.9);
+                ring(x, y, 11);
+            }
+            let col = C.yb;
+            if (CV.cz && CV.cz.includes(q)) col = mixHex(C.yb, C.rydberg, CV.czA);
+            const bright = CV.result && CV.result[q] === "1";
+            if (CV.measA > 0.01 && bright) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(x, y, 30, "#e2e8f0", 0.7 * CV.measA);
+                ctx.globalCompositeOperation = "source-over";
+            }
+            drawAtom(x, y, "yb", 1, 1.3, col);
+            text(`q${q}`, CQ.ax0 + q * CQ.adx, y + 26, { align: "center", size: 10 });
+            if (CV.result && CV.measA > 0.01) {
+                text(CV.result[q], CQ.ax0 + q * CQ.adx, y - 34, {
+                    align: "center", size: 15, weight: 700, alpha: CV.measA,
+                    color: bright ? C.text : C.faint
+                });
+            }
+        }
+
+        /* amplitudes */
+        const w = (CQ.bx1 - CQ.bx0) / 16;
+        text("STATE · AMPLITUDES", CQ.bx0, CQ.by - CQ.bh - 22, { size: 9 });
+        ctx.strokeStyle = hexA(C.text, 0.25);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(CQ.bx0, CQ.by);
+        ctx.lineTo(CQ.bx1, CQ.by);
+        ctx.stroke();
+        for (let i = 0; i < 16; i++) {
+            const a = CV.disp[i], x = CQ.bx0 + i * w + 3, h = a * CQ.bh;
+            if (Math.abs(h) > 0.5) {
+                ctx.fillStyle = hexA(a >= 0 ? C.yb : C.rb, 0.85);
+                ctx.fillRect(x, h > 0 ? CQ.by - h : CQ.by, w - 6, Math.abs(h));
+            }
+            if (!compact || i === 0 || i === 15) {
+                ctx.save();
+                ctx.translate(x + (w - 6) / 2, CQ.by + CQ.bh + 8);
+                ctx.rotate(-Math.PI / 2);
+                text(bitsOf(i), 0, 0, { align: "right", size: 8, color: i === 0 || i === 15 ? C.text : C.faint });
+                ctx.restore();
+            }
+        }
+        text("+", CQ.bx0 - 12, CQ.by - CQ.bh / 2, { size: 10, color: C.yb });
+        text("−", CQ.bx0 - 12, CQ.by + CQ.bh / 2, { size: 10, color: C.rb });
+        text(`shots ${CV.shots} · 0000: ${CV.ghz0} · 1111: ${CV.ghz1} · other: ${CV.other}`,
+            CQ.bx0, 608, { size: 10, color: C.text });
+
+        if (AS.status) text(AS.status, compact ? 980 : 985, 24, { align: "right", color: C.accent, size: 11 });
+    }
+
+
+    /* =========================================================
+       APPLICATIONS VIEW  (maximum independent set on a unit-disk
+       graph: the Rydberg blockade forbids neighbours natively)
+       ========================================================= */
+
+    const MIS = (() => {
+        const jit = [[8, -6], [-10, 12], [14, 4], [-6, -12], [10, 10], [-14, -4], [4, 14], [12, -10],
+            [-8, 6], [6, -14], [-12, 10], [14, 8], [-4, -8], [10, -4], [-10, -12], [6, 12]];
+        const nodes = [];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 4; c++) {
+                if ((r === 0 && c === 3) || (r === 3 && c === 0)) continue;
+                const j = jit[r * 4 + c];
+                nodes.push({ x: 110 + c * 120 + j[0], y: 150 + r * 112 + j[1], p: 0, show: 0 });
+            }
+        }
+        const R = 150, edges = [];
+        for (let i = 0; i < nodes.length; i++)
+            for (let k = i + 1; k < nodes.length; k++)
+                if (Math.hypot(nodes[i].x - nodes[k].x, nodes[i].y - nodes[k].y) < R) edges.push([i, k]);
+        /* brute force: the largest set with no edge inside */
+        const n = nodes.length;
+        let best = 0, bestN = 0;
+        for (let m = 1; m < (1 << n); m++) {
+            let ok = true;
+            for (const [i, k] of edges) if ((m >> i) & (m >> k) & 1) { ok = false; break; }
+            if (!ok) continue;
+            let c = 0;
+            for (let x = m; x; x &= x - 1) c++;
+            if (c > bestN) { bestN = c; best = m; }
+        }
+        nodes.forEach((nd, i) => { nd.mis = !!((best >> i) & 1); nd.ph = rand(0, TAU); });
+        return { nodes, edges, R, size: bestN, edgeA: 0, sweep: 0, found: 0, phase: "" };
+    })();
+
+    function misRound() {
+        return [
+            {
+                dur: 1.6,
+                start() {
+                    MIS.found = 0; MIS.sweep = 0;
+                    for (const nd of MIS.nodes) { nd.p = 0; nd.show = 0; }
+                    AS.status = "problem → atoms: neighbours closer than the blockade radius are linked";
+                },
+                update(p) { MIS.edgeA = p; }
+            },
+            {
+                dur: 4.0,
+                start() { AS.status = "sweep the laser detuning slowly · blockade forbids excited neighbours"; },
+                update(p) {
+                    MIS.sweep = p;
+                    for (const nd of MIS.nodes) {
+                        const ramp = clamp((p - 0.15) / 0.75, 0, 1);
+                        nd.p = nd.mis ? ease(ramp) : 0.45 * Math.sin(Math.PI * ramp);
+                    }
+                }
+            },
+            {
+                dur: 1.2,
+                start() {
+                    /* mostly the optimum; sometimes one short, as in real runs */
+                    const miss = Math.random() < 0.2 ? MIS.nodes.filter(nd => nd.mis)[Math.floor(rand(0, MIS.size))] : null;
+                    let k = 0;
+                    for (const nd of MIS.nodes) { nd.show = nd.mis && nd !== miss ? 1 : 0; k += nd.show; }
+                    MIS.found = k;
+                    AS.status = k === MIS.size
+                        ? `measured: ${k} atoms excited · a maximum independent set`
+                        : `measured: ${k} atoms · one short of the optimum (${MIS.size}) · run again`;
+                },
+                update(p) { for (const nd of MIS.nodes) nd.p = lerp(nd.p, nd.show, p); }
+            },
+            { dur: 2.4 },
+            { dur: 0.8, update(p) { MIS.edgeA = 1 - p; for (const nd of MIS.nodes) nd.p *= 1 - p; } }
+        ];
+    }
+
+    const APPS = [
+        {
+            title: "OPTIMIZATION", tag: "explored today", col: C.rydberg,
+            lines: ["scheduling, logistics, network design", "maps natively onto Rydberg arrays", "(left) · advantage still an open question"]
+        },
+        {
+            title: "CHEMISTRY & MATERIALS", tag: "needs error correction", col: C.l556,
+            lines: ["catalysts, batteries, drug molecules", "simulate electrons the way nature does", "needs hundreds of logical qubits"]
+        },
+        {
+            title: "CRYPTOGRAPHY", tag: "far future", col: C.rb,
+            lines: ["Shor's algorithm breaks RSA", "RSA-2048: < 1 million noisy qubits", "(2025 estimate) · drives post-quantum crypto"]
+        }
+    ];
+
+    function drawAppsView() {
+        const t = simTime;
+
+        text("EXAMPLE · MAXIMUM INDEPENDENT SET", 60, 72, { size: 9 });
+        text("e.g. place radio towers so no two neighbours interfere", 60, 90, { size: 10, color: C.text });
+
+        ctx.lineWidth = 1.2;
+        for (const [i, k] of MIS.edges) {
+            const a = MIS.nodes[i], b = MIS.nodes[k];
+            ctx.strokeStyle = hexA(C.text, 0.22 * MIS.edgeA);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+        }
+        for (const nd of MIS.nodes) {
+            if (nd.p > 0.6) {
+                ctx.setLineDash([3, 4]);
+                ctx.strokeStyle = hexA(C.rydberg, 0.35 * (nd.p - 0.6) / 0.4);
+                ctx.lineWidth = 1;
+                ring(nd.x, nd.y, MIS.R / 2);
+                ctx.setLineDash([]);
+            }
+        }
+        for (const nd of MIS.nodes) {
+            const flick = MIS.sweep > 0 && MIS.sweep < 1 && !nd.show ? 0.15 * Math.sin(t * 9 + nd.ph) : 0;
+            const p = clamp(nd.p + flick, 0, 1);
+            if (p > 0.05) {
+                ctx.globalCompositeOperation = "lighter";
+                glow(nd.x, nd.y, 30, C.rydberg, 0.7 * p);
+                ctx.globalCompositeOperation = "source-over";
+            }
+            drawAtom(nd.x, nd.y, "rb", 1, 1.2, mixHex(C.rb, C.rydberg, p));
+        }
+
+        /* blockade radius scale */
+        ctx.strokeStyle = hexA(C.text, 0.45);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(60, 600); ctx.lineTo(60 + MIS.R, 600);
+        ctx.stroke();
+        text("blockade radius", 60 + MIS.R + 10, 600, { size: 9 });
+        if (MIS.found) text(`${MIS.found} / ${MIS.size}`, 560, 600, { size: 13, weight: 600, color: C.text, align: "right" });
+
+        if (!compact) {
+            APPS.forEach((a, i) => {
+                const x = 640, y = 70 + i * 178, w = 345, h = 158;
+                panel(x, y, w, h, a.title);
+                ctx.fillStyle = hexA(a.col, 0.9);
+                circle(x + w - 20, y + 20, 4);
+                text(a.tag, x + w - 32, y + 20, { size: 9, align: "right", color: a.col });
+                a.lines.forEach((ln, k) => text(ln, x + 16, y + 56 + k * 24, { size: 10, color: k === 0 ? C.text : C.dim }));
+            });
+        }
+
+        if (AS.status) text(AS.status, compact ? 980 : 985, 24, { align: "right", color: C.accent, size: 11 });
+    }
+
+
+    /* =========================================================
        STEPS
        ========================================================= */
 
@@ -2180,6 +2614,42 @@
                 AS.status = "";
                 play(codeRound, true);
             }
+        },
+
+        {
+            nav: "Circuits",
+            view: "circuit",
+            label: "QUANTUM CIRCUITS · COMPILED TO NATIVE GATES",
+            title: "From circuits to laser pulses.",
+            text:
+                `<p>An algorithm is written as a <em>quantum circuit</em>: qubits as lines, gates as boxes. The machine itself only knows a few <em>native gates</em>: single-qubit rotations (laser or RF pulses, on all atoms or on selected ones) and the Rydberg CZ gate. A compiler translates everything else, for example a CNOT becomes H&nbsp;·&nbsp;CZ&nbsp;·&nbsp;H.</p>
+                 <p>Atoms that need to interact are brought next to each other by moving tweezers, so any qubit can talk to any other. This example creates a four-qubit GHZ state. The bars show the actual quantum amplitudes after each gate, including the sign flips from the CZ gates. An ideal machine then measures only 0000 or 1111, each half of the time.</p>`,
+            chips: ["native gates: rotations + CZ", "CNOT = H · CZ · H", "atoms moved to interact", "GHZ: 0000 or 1111"],
+            papers: [["Barenco et al.", "Phys. Rev. A 52, 3457 (1995)", "https://doi.org/10.1103/PhysRevA.52.3457", "Any circuit can be built from single-qubit gates plus one two-qubit gate."], ["Levine et al.", "Phys. Rev. Lett. 123, 170503 (2019)", "https://doi.org/10.1103/PhysRevLett.123.170503", "Parallel high-fidelity CZ and three-qubit gates with Rydberg atoms."], ["Graham et al.", "Nature 604, 457 (2022)", "https://doi.org/10.1038/s41586-022-04603-6", "Multi-qubit entanglement and first algorithms on a neutral-atom computer."], ["Bluvstein et al.", "Nature 604, 451 (2022)", "https://doi.org/10.1038/s41586-022-04592-6", "Moving entangled atoms mid-circuit to connect any qubits."]],
+            enter() {
+                circuitReset();
+                CV.disp.fill(0);
+                CV.disp[0] = 1;
+                CV.shots = CV.ghz0 = CV.ghz1 = CV.other = 0;
+                AS.status = "";
+                play(circuitRound, true);
+            }
+        },
+
+        {
+            nav: "Applications",
+            view: "apps",
+            label: "APPLICATIONS",
+            title: "Why build all this?",
+            text:
+                `<p>To solve a real problem, it has to be translated into qubits and gates. Some problems fit neutral atoms almost natively. In the <em>maximum independent set</em> problem you pick as many points of a network as possible, with no two neighbours. Place one atom per point: the Rydberg blockade already forbids neighbouring excitations, and a slow laser sweep drives the atoms towards the best answer.</p>
+                 <p>The big promises are further away. Simulating molecules for catalysts, batteries or drugs, and factoring numbers with Shor's algorithm, need error-corrected logical qubits (step 09) in large numbers. Today's machines are research devices, and a clear industrial advantage has not been shown yet. Getting there is exactly what labs like ours are working on.</p>`,
+            chips: ["optimization · explored today", "chemistry · needs error correction", "cryptography · far future"],
+            papers: [["Ebadi et al.", "Science 376, 1209 (2022)", "https://doi.org/10.1126/science.abo6587", "Maximum independent set solved natively on up to 289 Rydberg atoms."], ["Reiher et al.", "PNAS 114, 7555 (2017)", "https://doi.org/10.1073/pnas.1619152114", "Resource estimate for simulating nitrogen fixation (FeMoco) on a quantum computer."], ["Shor", "SIAM J. Comput. 26, 1484 (1997)", "https://doi.org/10.1137/S0097539795293172", "Polynomial-time factoring: the algorithm that threatens RSA."], ["Gidney", "arXiv:2505.15917 (2025)", "https://arxiv.org/abs/2505.15917", "RSA-2048 with fewer than a million noisy qubits."]],
+            enter() {
+                AS.status = "";
+                play(misRound, true);
+            }
         }
     ];
 
@@ -2263,6 +2733,7 @@
         const v = steps[cur].view;
         if (v === "machine") updateMachine(dt);
         else if (v === "array") updateArray(dt);
+        else if (v === "circuit") updateCircuit(dt);
         if (MS.panel === "lattice") latticePhaseInset += 0.3 * MS.vel * dt;
         updateSeq(dt);
     }
@@ -2270,6 +2741,8 @@
     function drawView(v) {
         if (v === "machine") drawMachineView();
         else if (v === "code") drawCodeView();
+        else if (v === "circuit") drawCircuitView();
+        else if (v === "apps") drawAppsView();
         else drawArrayView();
     }
 
