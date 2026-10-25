@@ -228,3 +228,102 @@ html[data-theme="dark"] {
   color: var(--accent-1);
   background: var(--accent-soft);
 }
+
+
+/* ==========================================================================
+   CV MAP
+   ========================================================================== */
+
+.cv-map {
+  height: 380px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  z-index: 0;
+  background: var(--card-bg);
+}
+
+.cv-map__leg {
+  stroke: var(--accent-1);
+  stroke-dasharray: 7 6;
+  animation: cv-dash 1.6s linear infinite;
+}
+
+.cv-map__head {
+  fill: var(--accent-1);
+}
+
+@keyframes cv-dash {
+  to { stroke-dashoffset: -13; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-map__leg { animation: none; }
+}
+
+.cv-map__pin span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font: 600 12px/1 $sans-serif;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  border: 2px solid var(--global-bg-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.cv-map__reset {
+  padding: 0.3em 0.8em;
+  font: 600 12px $sans-serif;
+  color: var(--accent-1);
+  background: var(--global-bg-color);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cv-stops {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5em, 1fr));
+  gap: 0.5em;
+  margin: 0.8em 0 0;
+  padding: 0;
+  list-style: none;
+
+  button {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6em;
+    width: 100%;
+    padding: 0.5em 0.7em;
+    text-align: left;
+    font-size: 0.78em;
+    line-height: 1.35;
+    color: var(--global-text-color);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover { border-color: var(--accent-1); }
+
+    small { color: var(--global-text-color-light); }
+  }
+
+  .n {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7em;
+    height: 1.7em;
+    border-radius: 50%;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  }
+}
