@@ -836,21 +836,20 @@
         rowSp: ["yb", "rb", "yb", "rb"],
         cavY: 500, mirL: 110, mirR: 890,
         det: { x: 948, y: 500 },
-        resMax: 30
+        resMax: 32
     };
 
-    /* storage tweezers: 5 x 2 sites, up to 3 atoms each.
+    /* storage tweezers: 8 rows x 4 columns, 0 or 1 atom each.
        The same pattern exists at the loading zone (moving AOD array)
        and in one static storage region per species. */
     const ST = {
-        rows: [50, 70, 90, 110, 130], dx: 10, cap: 3,
+        rows: [44, 56, 68, 80, 92, 104, 116, 128], cols: [-16.5, -5.5, 5.5, 16.5], cap: 1,
         x: { load: 500, yb: 290, rb: 710 }
     };
-    const SLOT = [[-3, -2.5], [3, -2.5], [0, 3]];
 
     function storeSites(x0) {
         const s = [];
-        for (const y of ST.rows) for (const d of [-1, 1]) s.push([x0 + d * ST.dx, y]);
+        for (const y of ST.rows) for (const d of ST.cols) s.push([x0 + d, y]);
         return s;
     }
 
@@ -870,12 +869,12 @@
     };
 
     function setStore(n) {
-        for (const sp of ["yb", "rb"]) AS.store[sp] = new Array(ST.rows.length * 2).fill(n);
+        for (const sp of ["yb", "rb"]) AS.store[sp] = new Array(ST.rows.length * ST.cols.length).fill(n);
     }
     setStore(ST.cap);
 
     function storeCount(sp) { return AS.store[sp].reduce((s, n) => s + n, 0); }
-    function storeFull(sp) { return storeCount(sp) >= AG.resMax * 0.8; }
+    function storeFull(sp) { return storeCount(sp) >= AG.resMax * 0.5; }
 
     function siteXY(r, c) { return [AG.x0 + c * AG.dx, AG.y0 + r * AG.dy]; }
 
@@ -944,15 +943,14 @@
         return n;
     }
 
-    /* pick a single atom out of the fullest storage site */
+    /* pick the single atom out of a random filled storage site */
     function takeFromRes(sp) {
-        const s = AS.store[sp];
-        let k = 0;
-        for (let i = 1; i < s.length; i++) if (s[i] > s[k]) k = i;
-        if (!s[k]) return null;
-        s[k]--;
-        const [x, y] = storeSites(ST.x[sp])[k], o = SLOT[s[k]];
-        return [x + o[0], y + o[1]];
+        const s = AS.store[sp], idx = [];
+        s.forEach((n, i) => { if (n) idx.push(i); });
+        if (!idx.length) return null;
+        const k = idx[Math.floor(Math.random() * idx.length)];
+        s[k] = 0;
+        return storeSites(ST.x[sp])[k];
     }
 
     /* ---------- loading cycle: conveyor -> storage tweezers -> storage region ---------- */
@@ -963,7 +961,7 @@
         arrive: sp => `conveyor brings a ${spName(sp)} cloud`,
         hold: () => "Δν → 0 · the conveyor stops and holds the cloud",
         overlap: () => "storage tweezers on, overlapping the cloud",
-        release: () => "lattice off · uncaptured atoms fall away",
+        release: () => "lattice off · pairs collide and leave · 0 or 1 atom per tweezer",
         move: sp => `storage array → ${spName(sp)} storage region`,
         handoff: sp => `${spName(sp)} atoms parked · conveyor free again`
     };
@@ -981,10 +979,10 @@
 
     function startBatch() {
         LD.cloud = [];
-        for (let i = 0; i < 46; i++) {
+        for (let i = 0; i < 110; i++) {
             LD.cloud.push({
                 sp: LD.sp, m: "lat", a: 1, ph: rand(0, TAU),
-                tx: ST.x.load + randn() * 8, ty: 7 * Math.round(rand(42, 138) / 7), x: 0, y: -60
+                tx: ST.x.load + randn() * 11, ty: 7 * Math.round(rand(38, 134) / 7), x: 0, y: -60
             });
         }
         LD.x = ST.x.load;
@@ -993,21 +991,32 @@
     }
 
     function captureCloud() {
-        const sites = storeSites(ST.x.load), used = AS.store[LD.sp].slice();
+        const sites = storeSites(ST.x.load), filled = AS.store[LD.sp], cand = sites.map(() => []);
         for (const q of LD.cloud) {
-            let best = -1, bd = 12;
+            let best = -1, bd = 8;
             sites.forEach(([sx, sy], i) => {
                 const d = Math.hypot(q.x - sx, q.y - sy);
-                if (d < bd && used[i] < ST.cap) { bd = d; best = i; }
+                if (d < bd) { bd = d; best = i; }
             });
-            if (best >= 0) { q.m = "cap"; q.site = best; q.k = used[best]++; }
+            if (best >= 0 && !filled[best]) cand[best].push(q);
             else { q.m = "lost"; q.vx = randn() * 15; q.vy = rand(10, 40); }
         }
+        /* light-assisted collisions remove atoms in pairs:
+           each tweezer ends up with either 0 or 1 atom */
+        cand.forEach((list, i) => {
+            const keep = list.length && Math.random() < 0.6 ? list[0] : null;
+            for (const q of list) {
+                if (q === keep) { q.m = "cap"; q.site = i; continue; }
+                q.m = "lost";
+                q.vx = (Math.random() < 0.5 ? -1 : 1) * rand(70, 130);
+                q.vy = rand(-50, 10);
+            }
+        });
     }
 
     function handoff() {
         const s = AS.store[LD.sp];
-        for (const q of LD.cloud) if (q.m === "cap") s[q.site] = Math.min(ST.cap, s[q.site] + 1);
+        for (const q of LD.cloud) if (q.m === "cap") s[q.site] = 1;
         LD.cloud = LD.cloud.filter(q => q.m !== "cap");
     }
 
@@ -1057,9 +1066,9 @@
                 q.x = q.tx + Math.sin(simTime * 7 + q.ph) * 0.6;
                 q.y = q.ty - LD.disp;
             } else if (q.m === "cap") {
-                const [sx, sy] = sites[q.site], o = SLOT[q.k], f = Math.min(1, dt * 12);
-                q.x += (sx + o[0] - q.x) * f;
-                q.y += (sy + o[1] - q.y) * f;
+                const [sx, sy] = sites[q.site], f = Math.min(1, dt * 12);
+                q.x += (sx - q.x) * f;
+                q.y += (sy - q.y) * f;
             } else {
                 q.vy += 260 * dt;
                 q.x += q.vx * dt;
@@ -1388,12 +1397,9 @@
         for (const sp of ["yb", "rb"]) {
             storeSites(ST.x[sp]).forEach(([x, y], i) => {
                 ctx.strokeStyle = hexA(C.tweezer, 0.18);
-                ring(x, y, 7);
-                for (let k = 0; k < AS.store[sp][i]; k++) {
-                    const o = SLOT[k];
-                    drawAtom(x + o[0] + Math.sin(t * 3 + i + 2 * k) * 0.5, y + o[1] + Math.cos(t * 2.6 + i + k) * 0.5,
-                        sp, 0.9 * AS.storeA, 0.5);
-                }
+                ring(x, y, 4.5);
+                if (AS.store[sp][i])
+                    drawAtom(x + Math.sin(t * 3 + i) * 0.4, y + Math.cos(t * 2.6 + i) * 0.4, sp, 0.9 * AS.storeA, 0.5);
             });
         }
 
@@ -1401,10 +1407,10 @@
         if (LD.ring > 0.01) {
             for (const [x, y] of storeSites(LD.x)) {
                 ctx.globalCompositeOperation = "lighter";
-                glow(x, y, 14, C.tweezer, 0.35 * LD.ring);
+                glow(x, y, 10, C.tweezer, 0.35 * LD.ring);
                 ctx.globalCompositeOperation = "source-over";
                 ctx.strokeStyle = hexA(C.tweezer, 0.8 * LD.ring);
-                ring(x, y, 7);
+                ring(x, y, 4.5);
             }
         }
         for (const q of LD.cloud) drawAtom(q.x, q.y, q.sp, clamp(q.a, 0, 1), 0.5);
@@ -1937,9 +1943,9 @@
             label: "OCTAGON · STORAGE",
             title: "Stop, catch, park.",
             text:
-                `<p>Now we zoom into the octagon. Here the conveyor belt stops: Δν is ramped to zero and the lattice holds a cloud of cold atoms in place. A <em>storage tweezer array</em> is switched on right on top of the cloud, and then the lattice is switched off. Atoms sitting in a storage tweezer stay put, the rest fall away.</p>
-                 <p>The storage array, now holding a few atoms per site, is moved over into the storage region. The conveyor is free again and brings the next cloud. Batches alternate between <span class="yb">Yb</span> and <span class="rb">Rb</span>, each parked on its own side.</p>`,
-            chips: ["conveyor stops · Δν → 0", "storage tweezers overlap the cloud", "lattice off → move to storage"],
+                `<p>Now we zoom into the octagon. Here the conveyor belt stops: Δν is ramped to zero and the lattice holds a cloud of cold atoms in place. A <em>storage tweezer array</em> is switched on right on top of the cloud, and then the lattice is switched off. Atoms outside the tweezers fall away. Where several atoms share a tweezer, light-assisted collisions kick them out in pairs, so every tweezer ends up with either zero or one atom, a bit more than half of them filled.</p>
+                 <p>The storage array is then moved over into the storage region. The conveyor is free again and brings the next cloud. Batches alternate between <span class="yb">Yb</span> and <span class="rb">Rb</span>, each parked on its own side.</p>`,
+            chips: ["conveyor stops · Δν → 0", "storage tweezers overlap the cloud", "0 or 1 atom per tweezer", "lattice off → move to storage"],
             papers: [["Norcia et al.", "PRX Quantum 5, 030316 (2024)", "https://doi.org/10.1103/PRXQuantum.5.030316", "¹⁷¹Yb reservoir refills a 1225-site array to 99 % occupancy, repeatedly."], ["Pause et al.", "Optica 11, 222 (2024)", "https://doi.org/10.1364/OPTICA.513551", "Tiled tweezer arrays with >1000 atoms; one array resupplies the other."], ["Gyger et al.", "Phys. Rev. Research 6, 033104 (2024)", "https://doi.org/10.1103/PhysRevResearch.6.033104", "Continuously operated >1000-atom arrays with atoms recycled from a lattice."]],
             enter() {
                 arrayEnter();
@@ -2001,7 +2007,7 @@
                     acts.push({
                         dur: 0.6,
                         start() { AS.status = "reset and repeat"; for (const a of AS.atoms) a.state = "fade"; },
-                        end() { clearArray(); }
+                        end() { clearArray(); setStore(ST.cap); }
                     });
                     return acts;
                 }, true);
