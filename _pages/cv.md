@@ -59,7 +59,7 @@ redirect_from:
     style: STYLE + (isDark() ? "dark" : "positron"),
     bounds: bounds,
     fitBoundsOptions: { padding: 40 },
-    scrollZoom: false,
+    cooperativeGestures: true,
     dragRotate: false,
     pitchWithRotate: false,
     attributionControl: { compact: true }
