@@ -1,0 +1,230 @@
+/* ==========================================================================
+   CUSTOM LOOK
+   Accent colours borrowed from the Neutral Atom Playground:
+   violet (ytterbium) and coral (rubidium).
+   ========================================================================== */
+
+:root {
+  --accent-1           : #6d4fd8;
+  --accent-2           : #f0663a;
+  --accent-soft        : rgba(109, 79, 216, 0.07);
+  --accent-soft-2      : rgba(240, 102, 58, 0.10);
+  --card-bg            : #fbfaff;
+  --card-border        : #e7e3f7;
+
+  --global-base-color          : #6d4fd8;
+  --global-link-color          : #6d4fd8;
+  --global-link-color-hover    : #4c33a8;
+  --global-link-color-visited  : #7f63e0;
+  --global-masthead-link-color-hover : #6d4fd8;
+}
+
+html[data-theme="dark"] {
+  --accent-1           : #a78bfa;
+  --accent-2           : #ff8a65;
+  --accent-soft        : rgba(167, 139, 250, 0.10);
+  --accent-soft-2      : rgba(255, 138, 101, 0.12);
+  --card-bg            : #1a2130;
+  --card-border        : #2b3446;
+
+  --global-base-color          : #a78bfa;
+  --global-bg-color            : #121722;
+  --global-footer-bg-color     : #0e131c;
+  --global-border-color        : #2b3446;
+  --global-dark-border-color   : #2b3446;
+  --global-link-color          : #b9a4fb;
+  --global-link-color-hover    : #d6c9ff;
+  --global-link-color-visited  : #a78bfa;
+  --global-masthead-link-color : #dbe3ee;
+  --global-masthead-link-color-hover : #b9a4fb;
+  --global-text-color          : #dbe3ee;
+  --global-text-color-light    : #9aa6b8;
+  --global-thead-color         : #1a2130;
+}
+
+/* thin violet -> coral line under the top bar */
+.masthead::after {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  opacity: 0.85;
+}
+
+.masthead__menu-item a:hover {
+  color: var(--accent-1);
+}
+
+/* page titles get a short gradient underline */
+.page__title {
+  position: relative;
+  padding-bottom: 0.35em;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 3.5rem;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  }
+}
+
+.author__name {
+  color: var(--accent-1);
+}
+
+
+/* ==========================================================================
+   CV
+   ========================================================================== */
+
+.cv {
+  margin-top: 1.5em;
+}
+
+.cv__section {
+  margin-bottom: 2.75em;
+}
+
+.cv__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 1em;
+  padding: 0;
+  border: 0;
+  font-size: 1.15em;
+  letter-spacing: 0.02em;
+  color: var(--global-text-color);
+
+  i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2em;
+    height: 2em;
+    border-radius: 50%;
+    font-size: 0.8em;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  }
+}
+
+.cv__timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.4em;
+  border-left: 2px solid var(--card-border);
+}
+
+.cv__item {
+  position: relative;
+  margin: 0 0 1.1em;
+  padding: 0.85em 1.1em;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    border-color: var(--accent-1);
+    transform: translateX(2px);
+  }
+
+  /* dot on the timeline */
+  &::before {
+    content: "";
+    position: absolute;
+    left: calc(-1.4em - 7px);
+    top: 1.15em;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--global-bg-color);
+    border: 2px solid var(--accent-1);
+  }
+
+  &--now::before {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    box-shadow: 0 0 0 4px var(--accent-soft-2);
+  }
+}
+
+.cv__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.2em;
+  font-size: 0.72em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--global-text-color-light);
+}
+
+.cv__badge {
+  padding: 0.1em 0.6em;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--accent-2);
+  background: var(--accent-soft-2);
+}
+
+.cv__title {
+  margin: 0;
+  font-size: 0.98em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--global-text-color);
+}
+
+.cv__org {
+  margin: 0.1em 0 0;
+  font-size: 0.85em;
+  color: var(--accent-1);
+}
+
+.cv__points {
+  margin: 0.5em 0 0;
+  padding-left: 1.1em;
+  font-size: 0.85em;
+
+  li {
+    margin-bottom: 0.15em;
+
+    &::marker {
+      color: var(--accent-2);
+    }
+  }
+}
+
+.cv__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin: 0.6em 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 0.15em 0.65em;
+    border-radius: 999px;
+    font-size: 0.72em;
+    color: var(--accent-1);
+    background: var(--accent-soft);
+    border: 1px solid var(--card-border);
+  }
+}
+
+.cv__grade {
+  float: right;
+  margin-left: 0.8em;
+  padding: 0.1em 0.6em;
+  border-radius: 6px;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--accent-1);
+  background: var(--accent-soft);
+}

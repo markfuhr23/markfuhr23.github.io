@@ -26,7 +26,7 @@ author:
   avatar           : "profile.png"
   name             : "Markus Fuhrmann"
   pronouns         : # example: "she/her"  
-  bio              : "M.Sc. Physics student at TUM and LMU Munich, Germany. Interested in neutral atom computing, quantum optics and the hardware behind it. In love with setting up experiments, automation and new labs."
+  bio              : "M.Sc. Physics student at TUM and LMU Munich, Germany. Interested in neutral atom computing, quantum optics and the hardware behind it. In love with setting up experiments, automation and new labs. Currently building optical conveyor belt lattices for Rb and Yb in a dual species continuous reloading neutral atom platform for error correction."
   location         : # URL
   employer         : "Technical University of Munich & Ludwig Maximilians University Munich"
   uri              : "https://www.zeiher-lab.de/"
